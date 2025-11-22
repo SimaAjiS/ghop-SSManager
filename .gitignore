@@ -37,4 +37,4 @@ data/templates/*
 
 # Ignore specific Excel files
 data/master_tables_template.xlsx
-data/master_tables_dummy.xlsx
+!data/master_tables_dummy.xlsx
