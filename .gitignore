@@ -15,6 +15,7 @@ __pycache__/
 # Database
 *.db
 *.sqlite3
+!backend/master.db
 
 # Node / Frontend
 node_modules/
@@ -26,15 +27,15 @@ pnpm-debug.log
 
 # Project Data
 # Ignore contents of specific data directories but keep the directory itself
-data/chip_appearances/*
-!data/chip_appearances/.gitkeep
+backend/data/chip_appearances/*
+!backend/data/chip_appearances/.gitkeep
 
-data/spec_sheet_files/*
-!data/spec_sheet_files/.gitkeep
+backend/data/spec_sheet_files/*
+!backend/data/spec_sheet_files/.gitkeep
 
-data/templates/*
-!data/templates/.gitkeep
+backend/data/templates/*
+!backend/data/templates/.gitkeep
 
 # Ignore specific Excel files
-data/master_tables_template.xlsx
-!data/master_tables_dummy.xlsx
+backend/data/master_tables_template.xlsx
+!backend/data/master_tables_dummy.xlsx

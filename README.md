@@ -48,7 +48,7 @@ SSManager の SS とは SpecSheet の略で製品の性能スペックを記載�
 
 ```bash
 # バックエンド (FastAPI)
-uv run uvicorn app:app --reload --port 8000
+uv run app.py
 ```
 
 フロントエンドを個別に開発する場合は、別のターミナルで以下を実行します:
@@ -60,14 +60,14 @@ npm run dev
 
 ## 設定
 
-`settings.py` にて以下の設定を変更可能です:
+`backend/settings.py` にて以下の設定を変更可能です:
 
-- `MASTER_EXCEL_FILE`: 入力 Excel ファイルのパス (デフォルト: `data/master_tables_dummy.xlsx`)
+- `MASTER_EXCEL_FILE`: 入力 Excel ファイルのパス (デフォルト: `backend/data/master_tables_dummy.xlsx`)
 - `DB_FILE`: SQLite データベースファイルのパス
 - `TABLE_ORDER`: テーブルの表示順序
 
 ## 運用フロー
 
 1. **データ更新**: Excel ファイルを編集して保存。
-2. **反映**: `uv run scripts/import_data.py` を実行して DB を更新。
+2. **反映**: `uv run backend/scripts/import_data.py` を実行して DB を更新。
 3. **利用**: ブラウザをリロードして最新データを閲覧。
