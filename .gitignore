@@ -1,3 +1,30 @@
+# System & IDE
+.DS_Store
+.vscode/
+.idea/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+.python-version
+*.egg-info/
+
+# Database
+*.db
+*.sqlite3
+
+# Node / Frontend
+node_modules/
+dist/
+build/
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
+
+# Project Data
 # Ignore contents of specific data directories but keep the directory itself
 data/chip_appearances/*
 !data/chip_appearances/.gitkeep
@@ -8,9 +35,6 @@ data/spec_sheet_files/*
 data/templates/*
 !data/templates/.gitkeep
 
-# Ignore specific files
+# Ignore specific Excel files
 data/master_tables_template.xlsx
-
-# System files
-.DS_Store
-
+data/master_tables_dummy.xlsx
