@@ -1,0 +1,16 @@
+# Ignore contents of specific data directories but keep the directory itself
+data/chip_appearances/*
+!data/chip_appearances/.gitkeep
+
+data/spec_sheet_files/*
+!data/spec_sheet_files/.gitkeep
+
+data/templates/*
+!data/templates/.gitkeep
+
+# Ignore specific files
+data/master_tables_template.xlsx
+
+# System files
+.DS_Store
+
