@@ -109,46 +109,48 @@ const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent 
       </div>
 
       <div className="data-table-container">
-        <table>
-          <thead>
-            <tr>
-              {columns.map((col) => (
-                <th key={col} onClick={() => handleSort(col)}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    {col}
-                    {sortConfig.key === col ? (
-                      sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
-                    ) : (
-                      <ArrowUp size={14} style={{ opacity: 0.2 }} />
-                    )}
-                  </div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {processedData.length > 0 ? (
-              processedData.map((row, index) => (
-                <tr
-                    key={index}
-                    onClick={() => onRowClick && onRowClick(row)}
-                    style={onRowClick ? { cursor: 'pointer' } : {}}
-                    className={onRowClick ? 'clickable-row' : ''}
-                >
-                  {columns.map((col) => (
-                    <td key={`${index}-${col}`}>{row[col]}</td>
-                  ))}
-                </tr>
-              ))
-            ) : (
+        <div className="table-wrapper">
+          <table>
+            <thead>
               <tr>
-                <td colSpan={columns.length} style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
-                  No matching records found.
-                </td>
+                {columns.map((col) => (
+                  <th key={col} onClick={() => handleSort(col)}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {col}
+                      {sortConfig.key === col ? (
+                        sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
+                      ) : (
+                        <ArrowUp size={14} style={{ opacity: 0.2 }} />
+                      )}
+                    </div>
+                  </th>
+                ))}
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {processedData.length > 0 ? (
+                processedData.map((row, index) => (
+                  <tr
+                      key={index}
+                      onClick={() => onRowClick && onRowClick(row)}
+                      style={onRowClick ? { cursor: 'pointer' } : {}}
+                      className={onRowClick ? 'clickable-row' : ''}
+                  >
+                    {columns.map((col) => (
+                      <td key={`${index}-${col}`}>{row[col]}</td>
+                    ))}
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={columns.length} style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
+                    No matching records found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
       <div style={{ marginTop: '1rem', fontSize: '0.85rem', color: '#6b7280', textAlign: 'right' }}>
         Showing {processedData.length} rows
