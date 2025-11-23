@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { ArrowUp, ArrowDown, Search, AlertCircle } from 'lucide-react';
+import ThemeToggle from './ThemeToggle';
 
-const DataTable = ({ tableName, customUrl, customData }) => {
+const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent }) => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -89,18 +90,21 @@ const DataTable = ({ tableName, customUrl, customData }) => {
   const columns = Object.keys(data[0]);
 
   return (
-    <div className="main-content">
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <div className="content-header">
-        <h2>{tableName}</h2>
-        <div className="search-box-container">
-          <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
-          <input
-            type="text"
-            className="search-box"
-            placeholder="Search in table..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        {titleContent ? titleContent : <h2 style={{ margin: 0 }}>{tableName}</h2>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div className="search-box-container">
+            <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+            <input
+                type="text"
+                className="search-box"
+                placeholder="Search in table..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            </div>
+            <ThemeToggle />
         </div>
       </div>
 
@@ -125,7 +129,12 @@ const DataTable = ({ tableName, customUrl, customData }) => {
           <tbody>
             {processedData.length > 0 ? (
               processedData.map((row, index) => (
-                <tr key={index}>
+                <tr
+                    key={index}
+                    onClick={() => onRowClick && onRowClick(row)}
+                    style={onRowClick ? { cursor: 'pointer' } : {}}
+                    className={onRowClick ? 'clickable-row' : ''}
+                >
                   {columns.map((col) => (
                     <td key={`${index}-${col}`}>{row[col]}</td>
                   ))}

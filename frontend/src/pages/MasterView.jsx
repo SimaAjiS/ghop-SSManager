@@ -3,6 +3,7 @@ import axios from "axios";
 import "../App.css";
 import Sidebar from "../Sidebar";
 import DataTable from "../DataTable";
+import ThemeToggle from "../ThemeToggle";
 
 function MasterView() {
   const [tables, setTables] = useState([]);
@@ -33,14 +34,7 @@ function MasterView() {
 
   if (loading) {
     return (
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "100vh",
-        }}
-      >
+      <div className="loading">
         Loading application...
       </div>
     );
@@ -48,15 +42,7 @@ function MasterView() {
 
   if (error) {
     return (
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "100vh",
-          color: "red",
-        }}
-      >
+      <div className="error">
         {error}
       </div>
     );
@@ -69,13 +55,19 @@ function MasterView() {
         selectedTable={selectedTable}
         onSelectTable={setSelectedTable}
       />
-      {selectedTable ? (
-        <DataTable tableName={selectedTable} />
-      ) : (
-        <div className="main-content">
-          <div className="no-data">Select a table to view data</div>
-        </div>
-      )}
+      <div className="main-content" style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {selectedTable ? (
+            <DataTable tableName={selectedTable} />
+        ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                <div className="content-header">
+                    <h2 style={{ margin: 0 }}>Select Table</h2>
+                    <ThemeToggle />
+                </div>
+                <div className="no-data">Select a table to view data</div>
+            </div>
+        )}
+      </div>
     </div>
   );
 }
