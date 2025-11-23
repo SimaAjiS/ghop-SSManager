@@ -46,7 +46,8 @@
 
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4),
+    0 4px 6px -4px rgb(0 0 0 / 0.4);
 }
 
 body {
@@ -114,7 +115,9 @@ body {
 }
 
 .table-item:hover {
-  background-color: var(--border-color); /* Use border color as a subtle hover bg, or define a specific hover var */
+  background-color: var(
+    --border-color
+  ); /* Use border color as a subtle hover bg, or define a specific hover var */
   color: var(--text-primary);
 }
 
@@ -241,6 +244,7 @@ td {
   text-align: left;
   border-bottom: 1px solid var(--border-color);
   font-size: 0.9rem;
+  white-space: nowrap;
 }
 
 th {

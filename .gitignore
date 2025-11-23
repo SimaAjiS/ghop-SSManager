@@ -2,6 +2,9 @@
 .DS_Store
 .vscode/
 .idea/
+.cursor/
+!.cursor/mcp_setup_guide.md
+!.cursor/mcp.json.sample
 *.log
 
 # Python
