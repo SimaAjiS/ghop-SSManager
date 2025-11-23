@@ -257,11 +257,13 @@ def export_device_excel(device_type: str):
                 related_devices = [dict(row) for row in result_devices]
 
         # Load Template
-        template_path = os.path.join(settings.DATA_DIR, "spec_sheet_template.xlsx")
+        # Updated to use the new .xlsm template
+        template_path = os.path.join(settings.DATA_DIR, "templates", "specsheet_template.xlsm")
         if not os.path.exists(template_path):
             raise HTTPException(status_code=500, detail="Template file not found")
 
-        wb = openpyxl.load_workbook(template_path)
+        # keep_vba=True is required for .xlsm files
+        wb = openpyxl.load_workbook(template_path, keep_vba=True)
         ws = wb.active
 
         # Helper to safe get
@@ -269,40 +271,30 @@ def export_device_excel(device_type: str):
             val = data.get(key)
             return val if val is not None else default
 
-        # Fill Data
-        # We can use a simple replace strategy for placeholders or direct cell assignment if we know positions.
-        # Since we created the template with placeholders, let's try to find and replace them.
-        # However, iterating all cells is slow. Since we know the structure from create_template.py,
-        # we can map keys to cells or just use the known positions.
-        # For robustness, let's use the known positions from create_template.py logic.
+        # Fill Data based on new template structure
 
         # Header Info
-        ws['F2'] = get_val(device_data, 'sheet_no')
-        ws['F3'] = get_val(device_data, 'sheet_revision')
+        ws['K3'] = get_val(device_data, 'sheet_no')
+        ws['O3'] = get_val(device_data, 'sheet_revision')
 
         # Type
-        ws['A6'] = f"TYPE: {get_val(device_data, 'type')}"
+        ws['D7'] = get_val(device_data, 'sheet_name')
 
         # Chip Specs
-        # We need to find the rows. Let's assume fixed positions for now as per template creation.
-        # Row 9: Chip Size
-        ws['D9'] = f"{get_val(device_data, 'chip_x_mm')} * {get_val(device_data, 'chip_y_mm')} mm"
-        # Row 12: Gate
-        ws['D12'] = f"{get_val(device_data, 'pad_x_gate_um')} * {get_val(device_data, 'pad_y_gate_um')} um"
-        # Row 13: Source
-        ws['D13'] = f"{get_val(device_data, 'pad_x_source_um')} * {get_val(device_data, 'pad_y_source_um')} um"
-        # Row 14: Scribe Line
-        ws['D14'] = f"{get_val(device_data, 'dicing_line_um')} um"
-        # Row 18: PDPW
-        ws['D18'] = f"{get_val(device_data, 'pdpw')}pcs"
+        ws['H8'] = f"{get_val(device_data, 'chip_x_mm')} * {get_val(device_data, 'chip_y_mm')} mm"
+        ws['L10'] = f"{get_val(device_data, 'pad_x_gate_um')} * {get_val(device_data, 'pad_y_gate_um')} um"
+        ws['L11'] = f"{get_val(device_data, 'pad_x_source_um')} * {get_val(device_data, 'pad_y_source_um')} um"
+        ws['H12'] = f"{get_val(device_data, 'dicing_line_um')} um"
+        ws['H16'] = f"{get_val(device_data, 'pdpw')}pcs"
 
-        # Maximum Ratings (Row 22 header, 24 data start)
-        ws['E24'] = get_val(device_data, 'vdss_V')
-        ws['E25'] = get_val(device_data, 'vgss_V')
+        # Maximum Ratings
+        ws['G19'] = get_val(device_data, 'vdss_V')
+        ws['G20'] = get_val(device_data, 'vgss_V')
 
-        # Wafer Probing Spec (Row 27 header, 29 table header, 31 data start)
-        # The template has {{characteristics_start}} at A31
-        start_row = 31
+        # Wafer Probing Spec (Starts at Row 25)
+        # Columns: No(C), Item(D), Min(F), Typ(G), Max(H), Unit(I), Cond(J)
+        start_row = 25
+        available_rows = 10
 
         from openpyxl.styles import Alignment, Border, Side
         center_align = Alignment(horizontal='center', vertical='center')
@@ -310,88 +302,95 @@ def export_device_excel(device_type: str):
 
         # Insert rows for characteristics
         if elec_data:
-            ws.insert_rows(start_row, amount=len(elec_data))
+            num_items = len(elec_data)
 
-            for i, char in enumerate(elec_data):
+            # Only insert if we have more items than available rows
+            if num_items > available_rows:
+                ws.insert_rows(start_row + available_rows, amount=num_items - available_rows)
+
+            # Iterate over max(num_items, available_rows) to ensure we fill data AND clear unused rows
+            for i in range(max(num_items, available_rows)):
                 row = start_row + i
-                ws.cell(row=row, column=1, value=i+1).alignment = center_align
-                ws.cell(row=row, column=1).border = thin_border
+                if i < num_items:
+                    char = elec_data[i]
+                    ws.cell(row=row, column=3, value=i+1).alignment = center_align # No (C)
+                    ws.cell(row=row, column=3).border = thin_border
 
-                ws.cell(row=row, column=2, value=char.get('item')).alignment = center_align
-                ws.cell(row=row, column=2).border = thin_border
+                    ws.cell(row=row, column=4, value=char.get('item')).alignment = center_align # Item (D)
+                    ws.cell(row=row, column=4).border = thin_border
 
-                ws.cell(row=row, column=3, value=char.get('min')).alignment = center_align
-                ws.cell(row=row, column=3).border = thin_border
+                    ws.cell(row=row, column=6, value=char.get('min')).alignment = center_align # Min (F)
+                    ws.cell(row=row, column=6).border = thin_border
 
-                ws.cell(row=row, column=4, value=char.get('typ')).alignment = center_align
-                ws.cell(row=row, column=4).border = thin_border
+                    ws.cell(row=row, column=7, value=char.get('typ')).alignment = center_align # Typ (G)
+                    ws.cell(row=row, column=7).border = thin_border
 
-                ws.cell(row=row, column=5, value=char.get('max')).alignment = center_align
-                ws.cell(row=row, column=5).border = thin_border
+                    ws.cell(row=row, column=8, value=char.get('max')).alignment = center_align # Max (H)
+                    ws.cell(row=row, column=8).border = thin_border
 
-                ws.cell(row=row, column=6, value=char.get('unit')).alignment = center_align
-                ws.cell(row=row, column=6).border = thin_border
+                    ws.cell(row=row, column=9, value=char.get('unit')).alignment = center_align # Unit (I)
+                    ws.cell(row=row, column=9).border = thin_border
 
-                ws.cell(row=row, column=7, value=char.get('cond')).alignment = center_align
-                ws.cell(row=row, column=7).border = thin_border
+                    ws.cell(row=row, column=10, value=char.get('cond')).alignment = center_align # Cond (J)
+                    ws.cell(row=row, column=10).border = thin_border
+                else:
+                    # Clear unused rows (content only, keep formatting/borders if desired, or clear all)
+                    # User requested to avoid insertion, implying we should use the blank rows.
+                    # Clearing content makes them blank.
+                    for col in [3, 4, 6, 7, 8, 9, 10]:
+                        ws.cell(row=row, column=col, value="")
 
-            # Remove the placeholder row if it was pushed down or overwrite it
-            # insert_rows pushes existing rows down. The placeholder was at 31.
-            # If we inserted N rows at 31, the old 31 becomes 31+N.
-            # But wait, insert_rows inserts BEFORE the index.
-            # So if we insert at 31, the old 31 (placeholder) moves to 31+len.
-            # We should delete the placeholder row.
-            ws.delete_rows(start_row + len(elec_data))
+        # Notes Section
+        # NOTE: is at Row 47.
+        # Shift depends on how many rows we INSERTED.
+        # Inserted = max(0, num_items - available_rows)
+        shift_amount = max(0, len(elec_data) - available_rows) if elec_data else 0
 
-        # Notes
-        # Find where notes start. It was row 42 in template (10 rows after 31).
-        # Now it is shifted by len(elec_data) - 1 (since we deleted one placeholder).
-        # Let's just search for the ESD placeholder
+        # ESD Display
+        if get_val(device_data, 'esd_display'):
+             ws[f'C{47 + shift_amount}'] = f"NOTE: *{get_val(device_data, 'esd_display')}"
 
-        # Optimization: Calculate the new row index
-        # Original ESD row was 43 (31 + 1 + 10 + 1)
-        # New ESD row = 43 + len(elec_data) - 1
-        esd_row_idx = 43 + len(elec_data) - 1
-        ws[f'A{esd_row_idx}'] = f"*{get_val(device_data, 'esd_display')}"
+        # Footer Table (Related Devices)
+        # Header at Row 48 + shift
+        # Data starts at Row 49 + shift
+        footer_header_row = 48 + shift_amount
+        footer_start_row = 49 + shift_amount
+        footer_available_rows = 10 # Assumed based on analysis
 
-        # Footer Table
-        # Original footer start was 51 (43 + 2 + 4 + 2)
-        footer_start_row = 51 + len(elec_data) - 1
-
-        # Update Header with Sheet Name
-        ws[f'A{footer_start_row + 1}'] = f"TYPE: {get_val(device_data, 'sheet_name')}"
-
-        # Insert related devices
-        # Placeholder was at footer_start_row + 2
-        rel_dev_start = footer_start_row + 2
+        # Update Footer Header with Sheet Name
+        ws[f'F{footer_header_row}'] = f"TYPE: {get_val(device_data, 'sheet_name')}"
 
         if related_devices:
-            ws.insert_rows(rel_dev_start, amount=len(related_devices))
-            for i, dev in enumerate(related_devices):
-                row = rel_dev_start + i
+            num_rel = len(related_devices)
 
-                ws.merge_cells(f'A{row}:B{row}')
-                ws.cell(row=row, column=1, value=dev.get('type')).alignment = center_align
-                ws.cell(row=row, column=1).border = thin_border
-                # Merge requires setting style on top-left but border on all boundary cells if we want it perfect
-                # For simplicity, just set value and border on A
-                ws.cell(row=row, column=2).border = thin_border
+            if num_rel > footer_available_rows:
+                ws.insert_rows(footer_start_row + footer_available_rows, amount=num_rel - footer_available_rows)
 
-                ws.cell(row=row, column=3, value=dev.get('top_metal_display')).alignment = center_align
-                ws.cell(row=row, column=3).border = thin_border
+            for i in range(max(num_rel, footer_available_rows)):
+                row = footer_start_row + i
+                if i < num_rel:
+                    dev = related_devices[i]
 
-                ws.merge_cells(f'D{row}:E{row}')
-                ws.cell(row=row, column=4, value=dev.get('wafer_thickness_display')).alignment = center_align
-                ws.cell(row=row, column=4).border = thin_border
-                ws.cell(row=row, column=5).border = thin_border
+                    # Type (F)
+                    ws.cell(row=row, column=6, value=dev.get('type')).alignment = center_align
+                    ws.cell(row=row, column=6).border = thin_border
 
-                ws.merge_cells(f'F{row}:G{row}')
-                ws.cell(row=row, column=6, value=dev.get('back_metal_display')).alignment = center_align
-                ws.cell(row=row, column=6).border = thin_border
-                ws.cell(row=row, column=7).border = thin_border
+                    # Top Metal (I)
+                    ws.cell(row=row, column=9, value=dev.get('top_metal_display')).alignment = center_align
+                    ws.cell(row=row, column=9).border = thin_border
 
-            # Delete placeholder
-            ws.delete_rows(rel_dev_start + len(related_devices))
+                    # Wafer Thickness (K)
+                    ws.cell(row=row, column=11, value=dev.get('wafer_thickness_display')).alignment = center_align
+                    ws.cell(row=row, column=11).border = thin_border
+
+                    # Back Metal (M)
+                    ws.cell(row=row, column=13, value=dev.get('back_metal_display')).alignment = center_align
+                    ws.cell(row=row, column=13).border = thin_border
+                else:
+                     # Clear unused rows
+                    for col in [6, 9, 11, 13]:
+                        ws.cell(row=row, column=col, value="")
+
 
         # Save to a temporary buffer
         from io import BytesIO
@@ -399,13 +398,13 @@ def export_device_excel(device_type: str):
         wb.save(output)
         output.seek(0)
 
-        filename = f"SpecSheet_{device_type}_{get_val(device_data, 'sheet_no')}.xlsx"
+        filename = f"{get_val(device_data, 'sheet_no')}_{get_val(device_data, 'sheet_name')}.xlsm"
 
         from fastapi.responses import StreamingResponse
         headers = {
             'Content-Disposition': f'attachment; filename="{filename}"'
         }
-        return StreamingResponse(output, headers=headers, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        return StreamingResponse(output, headers=headers, media_type='application/vnd.ms-excel.sheet.macroEnabled.12')
 
     except HTTPException as he:
         raise he

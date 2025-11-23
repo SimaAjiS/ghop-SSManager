@@ -5,7 +5,12 @@ const DetailDrawer = ({ isOpen, onClose, title, data }) => {
   if (!isOpen) return null;
 
   const handlePrint = () => {
+    const originalTitle = document.title;
+    const sheetNo = getVal(data?.device, 'sheet_no');
+    const sheetName = getVal(data?.device, 'sheet_name');
+    document.title = `${sheetNo}_${sheetName}`;
     window.print();
+    document.title = originalTitle;
   };
 
   const handleExport = async () => {
@@ -104,7 +109,7 @@ const DetailDrawer = ({ isOpen, onClose, title, data }) => {
 
                 {/* Type Row */}
                 <div className="spec-row type-row">
-                    <span className="label">TYPE: {getVal(device, 'type')}</span>
+                    <span className="label">TYPE: {getVal(device, 'sheet_name')}</span>
                 </div>
 
                 {/* Chip Info Grid */}
