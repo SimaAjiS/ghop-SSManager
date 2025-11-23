@@ -31,6 +31,9 @@
 
   /* Gradients */
   --gradient-primary: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+
+  /* Table Styles */
+  --table-row-hover: #f1f5f9; /* Slate 50 */
 }
 
 [data-theme="dark"] {
@@ -48,6 +51,8 @@
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4),
     0 4px 6px -4px rgb(0 0 0 / 0.4);
+
+  --table-row-hover: #334155; /* Slate 700 - Visible contrast against Slate 800 card bg */
 }
 
 body {
@@ -264,7 +269,7 @@ tr:last-child td {
 }
 
 tr:hover td {
-  background-color: #f8fafc;
+  background-color: var(--table-row-hover);
 }
 
 /* Utilities */
