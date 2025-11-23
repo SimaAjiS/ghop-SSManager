@@ -49,9 +49,32 @@ const DetailDrawer = ({ isOpen, onClose, title, data }) => {
     }
   };
 
+  // Helper to format condition string
+  const formatCondition = (char) => {
+    const parts = [];
+    if (char.bias_vgs) parts.push(`Vgs=${char.bias_vgs}`);
+    if (char.bias_igs) parts.push(`Igs=${char.bias_igs}`);
+    if (char.bias_vds) parts.push(`Vds=${char.bias_vds}`);
+    if (char.bias_ids) parts.push(`Ids=${char.bias_ids}`);
+    if (char.bias_vss) parts.push(`Vss=${char.bias_vss}`);
+    if (char.bias_iss) parts.push(`Iss=${char.bias_iss}`);
+    if (char.cond) parts.push(char.cond);
+
+    return parts.join(', ');
+  };
+
   // Helper to safely get values
   const getVal = (obj, key, defaultVal = '-') => {
     return obj && obj[key] !== undefined && obj[key] !== null ? obj[key] : defaultVal;
+  };
+
+  // Helper to format limit values with prefix
+  const formatLimitValue = (val, item) => {
+    if (val === undefined || val === null || val === '') return '';
+    if (item === 'IGSS' || item === 'VGSS') {
+        return `+/- ${val}`;
+    }
+    return val;
   };
 
   const device = data?.device;
@@ -197,15 +220,15 @@ const DetailDrawer = ({ isOpen, onClose, title, data }) => {
                     </thead>
                     <tbody>
                         <tr>
-                            <td>Drain-source voltage</td>
+                            <td>Drain-Source Voltage</td>
                             <td>VDSS</td>
                             <td>{getVal(device, 'vdss_V')}</td>
                             <td>V</td>
                         </tr>
                         <tr>
-                            <td>Gate-source voltage</td>
+                            <td>Gate-Source Voltage</td>
                             <td>VGSS</td>
-                            <td>{getVal(device, 'vgss_V')}</td>
+                            <td>+/- {getVal(device, 'vgss_V')}</td>
                             <td>V</td>
                         </tr>
                     </tbody>
@@ -232,12 +255,12 @@ const DetailDrawer = ({ isOpen, onClose, title, data }) => {
                         {characteristics.map((char, index) => (
                             <tr key={index}>
                                 <td>{index + 1}</td>
-                                <td>{char.item}</td>
-                                <td>{getVal(char, 'min', '')}</td>
+                                <td style={{ textAlign: 'left', paddingLeft: '1rem' }}>{char.item}</td>
+                                <td>{formatLimitValue(getVal(char, 'min', ''), char.item)}</td>
                                 <td>{getVal(char, 'typ', '')}</td>
-                                <td>{getVal(char, 'max', '')}</td>
+                                <td>{formatLimitValue(getVal(char, 'max', ''), char.item)}</td>
                                 <td>{char.unit}</td>
-                                <td>{char.cond}</td>
+                                <td style={{ textAlign: 'left', paddingLeft: '1rem' }}>{formatCondition(char)}</td>
                             </tr>
                         ))}
                     </tbody>

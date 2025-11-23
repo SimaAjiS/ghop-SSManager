@@ -253,7 +253,9 @@ Master View および User View で表示されるマスターテーブルのア
 - `Sidebar.jsx` において、Master Tables のアイコンを `Database` から `FileSpreadsheet` に変更しました。
 - これにより、ユーザービューでの「Master Tables」が、個別のテーブルデータ（スプレッドシート形式）の集合であることをより直感的に表現しました。
 
-## Issue 10: Detail Drawer の WAFER PROBING SPEC CONDITION 欄の表示改善
+## Issue 10: Detail Drawer の WAFER PROBING SPEC CONDITION 欄の表示改善 ✅
+
+**ステータス**: 完了 (2025-11-24)
 
 **概要**
 Detail Drawer で表示される WAFER PROBING SPEC セクションの CONDITION 欄について、より詳細で分かりやすい表示形式に改善する。
@@ -287,11 +289,11 @@ Detail Drawer で表示される WAFER PROBING SPEC セクションの CONDITION
 
 **タスク**
 
-- [ ] バックエンド API の修正（全バイアス条件フィールドの取得）
-- [ ] フロントエンド Detail Drawer の CONDITION 欄表示ロジック実装
-- [ ] 空白フィールドのフィルタリング処理
-- [ ] 表示形式の調整と視認性確認
-- [ ] 実データでの動作確認
+- [x] バックエンド API の修正（全バイアス条件フィールドの取得）
+- [x] フロントエンド Detail Drawer の CONDITION 欄表示ロジック実装
+- [x] 空白フィールドのフィルタリング処理
+- [x] 表示形式の調整と視認性確認
+- [x] 実データでの動作確認
 
 ## Issue 11: Detail Drawer へのエクセルエクスポートボタン実装
 

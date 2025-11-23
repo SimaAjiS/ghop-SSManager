@@ -125,6 +125,7 @@
   flex: 1;
   display: flex;
   align-items: center;
+  padding-left: 20px; /* Align start position */
 }
 
 .spec-item.double-height {
@@ -148,7 +149,7 @@
 }
 
 .sub-label {
-  width: 80px;
+  width: 100px;
   padding: 4px;
   border-right: 1px solid #ccc;
   display: flex;
@@ -161,6 +162,7 @@
   flex: 1;
   display: flex;
   align-items: center;
+  padding-left: 20px; /* Align start position */
 }
 
 /* Tables */
