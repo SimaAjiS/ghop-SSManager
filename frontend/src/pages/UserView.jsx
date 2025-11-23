@@ -5,7 +5,7 @@ import DataTable from '../DataTable'
 import Sidebar from '../Sidebar'
 import DetailDrawer from '../DetailDrawer'
 import ThemeToggle from '../ThemeToggle'
-import { LayoutGrid, ArrowLeft } from 'lucide-react'
+import { LayoutGrid, ArrowLeft, FileText, Cpu, Zap, Package, Ruler, Layers, MoveVertical, Flag, Shield, Disc } from 'lucide-react'
 
 function UserView() {
   const [viewMode, setViewMode] = useState('deviceList') // 'deviceList' or 'masterList'
@@ -129,25 +129,44 @@ function UserView() {
                             overflowY: 'auto',
                             padding: '0.5rem'
                         }}>
-                            {tables.map((table) => (
-                            <div
-                                key={table}
-                                onClick={() => setSelectedTable(table)}
-                                className="card"
-                                style={{
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    height: '150px',
-                                    textAlign: 'center'
-                                }}
-                            >
-                                <LayoutGrid size={32} color="var(--primary-color)" style={{ marginBottom: '16px' }} />
-                                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '600', color: 'var(--text-primary)' }}>{table}</h3>
-                            </div>
-                            ))}
+                            {tables.map((table) => {
+                                const tableIcons = {
+                                    'MT_spec_sheet': FileText,
+                                    'MT_device': Cpu,
+                                    'MT_elec_characteristic': Zap,
+                                    'MT_item': Package,
+                                    'MT_unit': Ruler,
+                                    'MT_maskset': Layers,
+                                    'MT_wafer_thickness': MoveVertical,
+                                    'MT_status': Flag,
+                                    'MT_esd': Shield,
+                                    'MT_top_metal': Disc,
+                                    'MT_back_metal': Disc,
+                                    'MT_barrier': Disc,
+                                    'MT_passivation': Disc
+                                };
+                                const IconComponent = tableIcons[table] || LayoutGrid;
+
+                                return (
+                                <div
+                                    key={table}
+                                    onClick={() => setSelectedTable(table)}
+                                    className="card"
+                                    style={{
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        height: '150px',
+                                        textAlign: 'center'
+                                    }}
+                                >
+                                    <IconComponent size={32} color="var(--primary-color)" style={{ marginBottom: '16px' }} />
+                                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '600', color: 'var(--text-primary)' }}>{table}</h3>
+                                </div>
+                                );
+                            })}
                         </div>
                     </div>
                 )}
