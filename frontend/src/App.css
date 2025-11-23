@@ -1,1 +1,262 @@
-/* App.css cleared to prevent conflict with custom UI */
+/* Detail Drawer Spec Sheet Styles */
+
+.spec-sheet {
+  font-family: 'Times New Roman', Times, serif; /* Match typical spec sheet font */
+  color: #000;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.spec-header-table {
+  display: flex;
+  border: 1px solid #999;
+  margin-bottom: 1rem;
+  height: 80px; /* Fixed height for consistency */
+}
+
+.spec-header-title {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid #999;
+  padding: 0 1rem;
+}
+
+.spec-header-title h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.spec-header-sheet {
+  width: 150px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #999;
+}
+
+.spec-header-rev {
+  width: 60px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #999;
+}
+
+.spec-header-page {
+  width: 60px;
+  display: flex;
+  flex-direction: column;
+}
+
+.header-label {
+  font-size: 0.8rem;
+  padding: 2px 4px;
+  height: 20px;
+}
+
+.header-value {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+.spec-row {
+  padding: 0.5rem;
+  margin-bottom: 1rem;
+  font-weight: bold;
+}
+
+/* Chip Info Grid */
+.chip-info-grid {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  border: 1px solid #999;
+  margin-bottom: 1rem;
+}
+
+.chip-appearance {
+  border-right: 1px solid #999;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.appearance-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.chip-specs {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.spec-item {
+  display: flex;
+  border-bottom: 1px solid #ccc;
+  min-height: 30px;
+}
+
+.spec-item:last-child {
+  border-bottom: none;
+}
+
+.spec-item .label {
+  width: 200px;
+  padding: 4px 8px;
+  border-right: 1px solid #ccc;
+  background: #f0f0f0;
+  display: flex;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.spec-item .value {
+  padding: 4px 8px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.spec-item.double-height {
+  min-height: 60px;
+}
+
+.sub-specs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.sub-spec {
+  display: flex;
+  flex: 1;
+  border-bottom: 1px solid #ccc;
+}
+
+.sub-spec:last-child {
+  border-bottom: none;
+}
+
+.sub-label {
+  width: 80px;
+  padding: 4px;
+  border-right: 1px solid #ccc;
+  display: flex;
+  align-items: center;
+  background: #f9f9f9;
+}
+
+.sub-value {
+  padding: 4px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+/* Tables */
+.section-header {
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+  margin-top: 1rem;
+}
+
+.spec-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #999;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.spec-table th,
+.spec-table td {
+  border: 1px solid #ccc;
+  padding: 4px 8px;
+  text-align: center;
+}
+
+.spec-table th {
+  background: #f0f0f0;
+  font-weight: bold;
+}
+
+.ratings-table th {
+  text-align: center;
+}
+
+.probing-table th {
+  text-align: center;
+}
+
+.footer-table th {
+  background: #fff;
+  text-align: left;
+}
+
+.note-text {
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
+}
+
+.notes-section {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.note-row {
+  display: flex;
+  margin-bottom: 0.5rem;
+}
+
+.note-label {
+  width: 120px;
+  font-weight: bold;
+}
+
+.note-content {
+  flex: 1;
+}
+
+/* Print Styles */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .drawer-panel.open,
+  .drawer-panel.open * {
+    visibility: visible;
+  }
+  .drawer-panel.open {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    transform: none;
+    padding: 0;
+    margin: 0;
+    box-shadow: none;
+    background: white;
+  }
+  .drawer-header,
+  .drawer-backdrop {
+    display: none;
+  }
+  .drawer-content {
+    padding: 0 !important;
+  }
+  .spec-sheet {
+    width: 100%;
+    max-width: none;
+  }
+}

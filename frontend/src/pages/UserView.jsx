@@ -33,9 +33,22 @@ function UserView() {
     fetchTables();
   }, [])
 
-  const handleDeviceClick = (device) => {
-    setSelectedDevice(device);
-    setIsDrawerOpen(true);
+  const handleDeviceClick = async (device) => {
+    // device object from the list might only have partial data, so we fetch full details
+    try {
+        // Show drawer immediately with loading state if desired, or wait.
+        // Let's show drawer and loading state inside it or just wait.
+        // Better UX: set selectedDevice to null (loading) or a loading flag, open drawer, then fetch.
+        setSelectedDevice(null);
+        setIsDrawerOpen(true);
+
+        const response = await axios.get(`http://localhost:8000/api/devices/${device['Device Type']}/details`);
+        setSelectedDevice(response.data);
+    } catch (err) {
+        console.error("Failed to fetch device details", err);
+        // Optionally show error in drawer
+        setSelectedDevice({ error: "Failed to load details" });
+    }
   };
 
   const closeDrawer = () => {
