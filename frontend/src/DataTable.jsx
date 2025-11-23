@@ -7,12 +7,39 @@ const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent 
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Pagination & Search State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [pageSize, setPageSize] = useState(100);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      setCurrentPage(1); // Reset to page 1 on search
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Reset page when table changes
+  useEffect(() => {
+    setCurrentPage(1);
+    setSearchTerm('');
+    setDebouncedSearchTerm('');
+    setSortConfig({ key: null, direction: 'asc' });
+  }, [tableName, customUrl]);
+
+  // Fetch Data
   useEffect(() => {
     if (customData) {
         setData(customData);
+        setTotalRecords(customData.length);
+        setTotalPages(Math.ceil(customData.length / pageSize));
         return;
     }
 
@@ -23,17 +50,45 @@ const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent 
       setError(null);
       try {
         const url = customUrl || `http://localhost:8000/api/tables/${tableName}`;
-        const response = await axios.get(url);
-        setData(response.data.data);
+
+        // Build query params
+        const params = new URLSearchParams();
+        params.append('page', currentPage);
+        params.append('limit', pageSize);
+        if (debouncedSearchTerm) {
+            params.append('search', debouncedSearchTerm);
+        }
+        if (sortConfig.key) {
+            params.append('sort_by', sortConfig.key);
+            params.append('descending', sortConfig.direction === 'desc');
+        }
+
+        const response = await axios.get(`${url}?${params.toString()}`);
+
+        if (response.data.data) {
+            setData(response.data.data);
+            // If API returns pagination info, use it. Otherwise assume all data.
+            if (response.data.total !== undefined) {
+                setTotalRecords(response.data.total);
+                setTotalPages(response.data.total_pages);
+            } else {
+                // Fallback for APIs that don't support pagination yet (like customUrl might not)
+                setTotalRecords(response.data.data.length);
+                setTotalPages(1);
+            }
+        } else {
+            setData([]);
+        }
       } catch (err) {
         setError(err.message);
+        console.error("Error fetching data:", err);
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [tableName, customUrl, customData]);
+  }, [tableName, customUrl, customData, currentPage, pageSize, debouncedSearchTerm, sortConfig]);
 
   const handleSort = (key) => {
     let direction = 'asc';
@@ -43,11 +98,14 @@ const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent 
     setSortConfig({ key, direction });
   };
 
+  // Client-side processing for customData ONLY
   const processedData = useMemo(() => {
+    if (!customData) return data; // For server-side, data is already processed
+
     let filteredData = [...data];
 
-    if (searchTerm) {
-      const lowerTerm = searchTerm.toLowerCase();
+    if (debouncedSearchTerm) {
+      const lowerTerm = debouncedSearchTerm.toLowerCase();
       filteredData = filteredData.filter((item) =>
         Object.values(item).some((val) =>
           String(val).toLowerCase().includes(lowerTerm)
@@ -59,35 +117,34 @@ const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent 
       filteredData.sort((a, b) => {
         const aVal = a[sortConfig.key];
         const bVal = b[sortConfig.key];
-
-        // Handle null/undefined values - always put them at the end
         const aIsNull = aVal === null || aVal === undefined || aVal === '';
         const bIsNull = bVal === null || bVal === undefined || bVal === '';
 
         if (aIsNull && bIsNull) return 0;
-        if (aIsNull) return 1; // a goes to end
-        if (bIsNull) return -1; // b goes to end
+        if (aIsNull) return 1;
+        if (bIsNull) return -1;
 
-        // Both values are non-null, compare normally
         if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
         if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
         return 0;
       });
     }
 
-    return filteredData;
-  }, [data, searchTerm, sortConfig]);
+    // Client-side pagination for customData
+    const start = (currentPage - 1) * pageSize;
+    return filteredData.slice(start, start + pageSize);
+  }, [data, customData, debouncedSearchTerm, sortConfig, currentPage, pageSize]);
 
-  if (loading) return <div className="loading">Loading data...</div>;
+  if (loading && data.length === 0) return <div className="loading">Loading data...</div>;
   if (error) return (
     <div className="error">
       <AlertCircle size={24} style={{ marginBottom: '10px' }} />
       <div>Error loading table: {error}</div>
     </div>
   );
-  if (!data || data.length === 0) return <div className="no-data">No data available for this table.</div>;
 
-  const columns = Object.keys(data[0]);
+  // Determine columns from data
+  const columns = data.length > 0 ? Object.keys(data[0]) : [];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -99,7 +156,7 @@ const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent 
             <input
                 type="text"
                 className="search-box"
-                placeholder="Search in table..."
+                placeholder="Search..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -143,8 +200,8 @@ const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent 
                 ))
               ) : (
                 <tr>
-                  <td colSpan={columns.length} style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
-                    No matching records found.
+                  <td colSpan={columns.length || 1} style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
+                    {loading ? 'Loading...' : 'No matching records found.'}
                   </td>
                 </tr>
               )}
@@ -152,8 +209,55 @@ const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent 
           </table>
         </div>
       </div>
-      <div style={{ marginTop: '1rem', fontSize: '0.85rem', color: '#6b7280', textAlign: 'right' }}>
-        Showing {processedData.length} rows
+
+      {/* Pagination Controls */}
+      <div style={{
+          padding: '0.75rem 1rem',
+          borderTop: '1px solid var(--border-color)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          backgroundColor: 'var(--bg-secondary)',
+          fontSize: '0.875rem'
+      }}>
+        <div style={{ color: 'var(--text-secondary)' }}>
+            Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalRecords)} of {totalRecords} entries
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                style={{
+                    padding: '0.25rem 0.75rem',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '0.375rem',
+                    backgroundColor: currentPage === 1 ? 'var(--bg-primary)' : 'var(--bg-secondary)',
+                    color: currentPage === 1 ? 'var(--text-secondary)' : 'var(--text-primary)',
+                    cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                    opacity: currentPage === 1 ? 0.5 : 1
+                }}
+            >
+                Previous
+            </button>
+            <span style={{ color: 'var(--text-primary)' }}>
+                Page {currentPage} of {totalPages}
+            </span>
+            <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                style={{
+                    padding: '0.25rem 0.75rem',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '0.375rem',
+                    backgroundColor: currentPage === totalPages ? 'var(--bg-primary)' : 'var(--bg-secondary)',
+                    color: currentPage === totalPages ? 'var(--text-secondary)' : 'var(--text-primary)',
+                    cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                    opacity: currentPage === totalPages ? 0.5 : 1
+                }}
+            >
+                Next
+            </button>
+        </div>
       </div>
     </div>
   );

@@ -65,61 +65,190 @@ def get_tables():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/tables/{table_name}")
-def get_table_data(table_name: str):
-    """Returns all data for a specific table."""
+def get_table_data(
+    table_name: str,
+    page: int = 1,
+    limit: int = 50,
+    search: str = None,
+    sort_by: str = None,
+    descending: bool = False
+):
+    """Returns paginated data for a specific table with optional search and sort."""
     try:
         engine = get_db_engine()
         inspector = inspect(engine)
         if table_name not in inspector.get_table_names():
             raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
 
-        # Read table using pandas
-        # Requirement: "NaN（欠損値）や日付データは適切に処理される。"
-        df = pd.read_sql_table(table_name, engine)
+        # Calculate offset
+        offset = (page - 1) * limit
 
-        # Handle NaN: Convert to None (which becomes null in JSON)
-        # df.where(pd.notnull(df), None) failed for float columns with NaN
-        df = df.replace(float('nan'), None)
+        # Build query
+        # We need to dynamically build the query based on columns
+        # Since we don't have ORM models for all tables, we'll use Table reflection or raw SQL construction safely
+        from sqlalchemy import MetaData, Table, select, or_, asc, desc, func, cast, String
 
-        # Convert to list of dicts
-        data = df.to_dict(orient="records")
+        metadata = MetaData()
+        table = Table(table_name, metadata, autoload_with=engine)
 
-        return {"table": table_name, "data": data}
+        # Base query
+        stmt = select(table)
+
+        # Apply Search
+        if search:
+            # Create a list of ILIKE conditions for all text-based columns
+            # For simplicity in this generic view, we'll cast to string and search
+            # But for performance, we should ideally restrict to text columns.
+            # Let's try to search in all columns by casting to text.
+            search_conditions = []
+            for column in table.columns:
+                # Basic search implementation: cast to string and check contains
+                # This might be slow for huge tables but better than nothing
+                search_conditions.append(cast(column, String).ilike(f"%{search}%"))
+
+            if search_conditions:
+                stmt = stmt.where(or_(*search_conditions))
+
+        # Apply Sort
+        if sort_by:
+            if sort_by in table.columns:
+                col = table.columns[sort_by]
+                if descending:
+                    stmt = stmt.order_by(desc(col))
+                else:
+                    stmt = stmt.order_by(asc(col))
+            else:
+                # If sort column doesn't exist, ignore or default?
+                # Let's ignore to avoid erroring out on UI mismatch
+                pass
+
+        # Count total results (before pagination)
+        # We need a separate query for count
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+
+        # Apply Pagination
+        stmt = stmt.limit(limit).offset(offset)
+
+        with engine.connect() as conn:
+            # Execute count
+            total_records = conn.execute(count_stmt).scalar()
+
+            # Execute data fetch
+            result = conn.execute(stmt)
+            # Convert to list of dicts
+            # Handle NaN/None: SQLAlchemy returns None for NULL, which is what we want for JSON
+            data = [dict(row._mapping) for row in result]
+
+        total_pages = (total_records + limit - 1) // limit if limit > 0 else 1
+
+        return {
+            "table": table_name,
+            "data": data,
+            "total": total_records,
+            "page": page,
+            "limit": limit,
+            "total_pages": total_pages
+        }
+
     except HTTPException as he:
         raise he
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/user/devices")
-def get_user_devices():
-    """Returns a joined view of devices and their spec sheets."""
+def get_user_devices(
+    page: int = 1,
+    limit: int = 50,
+    search: str = None,
+    sort_by: str = None,
+    descending: bool = False
+):
+    """Returns a paginated joined view of devices and their spec sheets."""
     try:
         engine = get_db_engine()
-        # Join MT_device and MT_spec_sheet
-        # Note: Using text() for raw SQL is easier for joins than pandas merge if we want to rely on DB
-        # But here we can also use pandas merge if we prefer.
-        # Let's use SQL for efficiency.
-        query = text("""
-            SELECT
-                d.type as "Device Type",
-                d.sheet_no as "Sheet No",
-                s.sheet_name as "Sheet Name",
-                d.status as "Status",
-                s.vdss_V as "Vdss (V)",
-                s.vgss_V as "Vgss (V)",
-                s.idss_A as "Idss (A)"
-            FROM MT_device d
-            LEFT JOIN MT_spec_sheet s ON d.sheet_no = s.sheet_no
-        """)
+
+        from sqlalchemy import MetaData, Table, select, or_, asc, desc, func, cast, String
+
+        metadata = MetaData()
+        mt_device = Table('MT_device', metadata, autoload_with=engine)
+        mt_spec_sheet = Table('MT_spec_sheet', metadata, autoload_with=engine)
+
+        # Build join query with aliased columns
+        stmt = select(
+            mt_device.c.type.label('Device Type'),
+            mt_device.c.sheet_no.label('Sheet No'),
+            mt_spec_sheet.c.sheet_name.label('Sheet Name'),
+            mt_device.c.status.label('Status'),
+            mt_spec_sheet.c.vdss_V.label('Vdss (V)'),
+            mt_spec_sheet.c.vgss_V.label('Vgss (V)'),
+            mt_spec_sheet.c.idss_A.label('Idss (A)')
+        ).select_from(
+            mt_device.outerjoin(mt_spec_sheet, mt_device.c.sheet_no == mt_spec_sheet.c.sheet_no)
+        )
+
+        # Apply Search
+        if search:
+            search_conditions = [
+                cast(mt_device.c.type, String).ilike(f"%{search}%"),
+                cast(mt_device.c.sheet_no, String).ilike(f"%{search}%"),
+                cast(mt_spec_sheet.c.sheet_name, String).ilike(f"%{search}%"),
+                cast(mt_device.c.status, String).ilike(f"%{search}%"),
+                cast(mt_spec_sheet.c.vdss_V, String).ilike(f"%{search}%"),
+                cast(mt_spec_sheet.c.vgss_V, String).ilike(f"%{search}%"),
+                cast(mt_spec_sheet.c.idss_A, String).ilike(f"%{search}%")
+            ]
+            stmt = stmt.where(or_(*search_conditions))
+
+        # Apply Sort
+        if sort_by:
+            # Map display names to actual columns
+            sort_column_map = {
+                'Device Type': mt_device.c.type,
+                'Sheet No': mt_device.c.sheet_no,
+                'Sheet Name': mt_spec_sheet.c.sheet_name,
+                'Status': mt_device.c.status,
+                'Vdss (V)': mt_spec_sheet.c.vdss_V,
+                'Vgss (V)': mt_spec_sheet.c.vgss_V,
+                'Idss (A)': mt_spec_sheet.c.idss_A
+            }
+
+            if sort_by in sort_column_map:
+                col = sort_column_map[sort_by]
+                if descending:
+                    stmt = stmt.order_by(desc(col))
+                else:
+                    stmt = stmt.order_by(asc(col))
+
+        # Count total results
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+
+        # Calculate offset and apply pagination
+        offset = (page - 1) * limit
+        stmt = stmt.limit(limit).offset(offset)
 
         with engine.connect() as conn:
-            result = conn.execute(query)
-            # Convert to list of dicts
-            columns = result.keys()
-            data = [dict(zip(columns, row)) for row in result]
+            # Execute count
+            total_records = conn.execute(count_stmt).scalar()
 
-        return {"data": data}
+            # Execute data fetch
+            result = conn.execute(stmt)
+            data = [dict(row._mapping) for row in result]
+
+        total_pages = (total_records + limit - 1) // limit if limit > 0 else 1
+
+        return {
+            "data": data,
+            "total": total_records,
+            "page": page,
+            "limit": limit,
+            "total_pages": total_pages
+        }
+
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/devices/{device_type}/details")
