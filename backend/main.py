@@ -71,7 +71,8 @@ def get_table_data(table_name: str):
         df = pd.read_sql_table(table_name, engine)
 
         # Handle NaN: Convert to None (which becomes null in JSON)
-        df = df.where(pd.notnull(df), None)
+        # df.where(pd.notnull(df), None) failed for float columns with NaN
+        df = df.replace(float('nan'), None)
 
         # Convert to list of dicts
         data = df.to_dict(orient="records")

@@ -3,12 +3,14 @@ import sqlalchemy
 from sqlalchemy import create_engine, text
 import os
 import sys
+
 # Add parent directory to path to import settings
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import settings
+from schema import metadata
 
 def import_data():
-    """Imports data from Excel to SQLite."""
+    """Imports data from Excel to SQLite using strict schema."""
     if not os.path.exists(settings.MASTER_EXCEL_FILE):
         print(f"Error: Input file '{settings.MASTER_EXCEL_FILE}' not found.")
         sys.exit(1)
@@ -23,51 +25,82 @@ def import_data():
 
         engine = create_engine(settings.DB_URL)
 
-        # Use engine.begin() to automatically commit the transaction
-        with engine.begin() as conn:
+        # Drop all tables and recreate them based on schema
+        print("Recreating database schema...")
+        metadata.drop_all(engine)
+        metadata.create_all(engine)
+
+        with engine.connect() as conn:
             for sheet_name in sheet_names:
+                if sheet_name not in metadata.tables:
+                    print(f"Skipping sheet '{sheet_name}' as it is not defined in schema.")
+                    continue
+
                 print(f"Processing sheet: {sheet_name}")
                 df = pd.read_excel(xls, sheet_name=sheet_name)
+                table = metadata.tables[sheet_name]
 
-                # Drop table if exists
-                print(f"  Dropping table '{sheet_name}' if exists...")
-                conn.execute(text(f"DROP TABLE IF EXISTS \"{sheet_name}\""))
+                # Pre-processing
+                # 1. Handle 'id' column
+                # If table has 'id' as PK and auto-increment, we should generally let DB handle it unless we want to preserve Excel IDs.
+                # Requirement: "IDという名前のカラムがExcelに存在する場合は、DB側の自動採番を優先するため除外される。"
+                # However, for tables where we defined other PKs (MT_device, MT_spec_sheet), we need to be careful.
 
-                # Check if 'id' column exists
-                if 'id' not in [c.lower() for c in df.columns]:
-                    print("  'id' column not found. It will be auto-generated.")
-                    # Pandas to_sql with index=True creates an index column, usually named 'index' or similar.
-                    # To strictly follow "auto-increment ID", we can let pandas write it and then we might need to adjust schema if we want strict SQL primary key behavior.
-                    # However, for SQLite and simple usage, pandas default handling or adding an index column is often enough.
-                    # Requirement says: "Each table automatically gets an ID column (primary key, auto-increment). If ID exists in Excel, it is excluded."
+                # Check if 'id' is in Excel and drop it
+                id_col = next((c for c in df.columns if c.lower() == 'id'), None)
+                if id_col:
+                    print(f"  Removing existing '{id_col}' column from Excel data.")
+                    df = df.drop(columns=[id_col])
 
-                    # Let's explicitly handle ID.
-                    # If we want a true PK in SQLite via pandas, it's a bit tricky without defining schema.
-                    # But we can just add an index column starting from 1.
-                    df.index = df.index + 1
-                    df.index.name = 'id'
-                    df.to_sql(sheet_name, conn, if_exists='replace', index=True)
-                else:
-                    print("  'id' column found in Excel. Using it (but requirement says exclude it?).")
-                    # Requirement: "IDという名前のカラムがExcelに存在する場合は、DB側の自動採番を優先するため除外される。"
-                    # So we should drop it.
-                    # Find the column that matches 'id' case-insensitively
-                    id_col = next((c for c in df.columns if c.lower() == 'id'), None)
-                    if id_col:
-                        print(f"  Removing existing '{id_col}' column from data as per requirements.")
-                        df = df.drop(columns=[id_col])
+                # 2. Add missing columns (e.g. +/- in MT_elec_characteristic)
+                for col in table.columns:
+                    if col.name not in df.columns and col.name != 'id':
+                        # 'id' is auto-increment PK usually, so we don't add it if missing.
+                        # But for MT_device and MT_spec_sheet, 'id' is just a column, not PK.
+                        # If it's not in Excel, we might need to leave it null or fill it?
+                        # Actually, for MT_device and MT_spec_sheet, 'id' is defined as BigInteger but NOT PK.
+                        # If it's not in Excel, it will be Null.
 
-                    # Now add our own ID
-                    df.index = df.index + 1
-                    df.index.name = 'id'
-                    df.to_sql(sheet_name, conn, if_exists='replace', index=True)
+                        # Special case: +/- column
+                        if col.name == '+/-':
+                             print(f"  Adding missing column '{col.name}' (initialized to None).")
+                             df[col.name] = None
+                        # We don't auto-add other columns to avoid masking errors, unless we want to be robust.
+                        # But let's assume Excel matches schema mostly.
 
-                print(f"  Table '{sheet_name}' created with {len(df)} rows.")
+                # 3. Type conversion and cleaning
+                # Convert date columns
+                if '更新日' in df.columns:
+                    df['更新日'] = pd.to_datetime(df['更新日'], errors='coerce').dt.date
+
+                # Coerce numeric columns
+                for col in table.columns:
+                    if isinstance(col.type, (sqlalchemy.Integer, sqlalchemy.Float, sqlalchemy.BigInteger)):
+                        if col.name in df.columns:
+                             # Use pd.to_numeric to coerce non-numeric values to NaN
+                             df[col.name] = pd.to_numeric(df[col.name], errors='coerce')
+
+                # Insert data
+                # We use to_sql with if_exists='append' because we already created tables.
+                # We need to ensure columns match exactly.
+
+                # Filter df columns to only those in the table definition
+                valid_columns = [c.name for c in table.columns if c.name in df.columns]
+                df_to_insert = df[valid_columns]
+
+                try:
+                    df_to_insert.to_sql(sheet_name, conn, if_exists='append', index=False)
+                    print(f"  Imported {len(df)} rows into '{sheet_name}'.")
+                except Exception as e:
+                    print(f"  Error importing '{sheet_name}': {e}")
 
         print("Import completed successfully.")
 
     except Exception as e:
         print(f"An error occurred: {e}")
+        # Print full traceback for debugging
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":
