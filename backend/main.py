@@ -83,6 +83,38 @@ def get_table_data(table_name: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/user/devices")
+def get_user_devices():
+    """Returns a joined view of devices and their spec sheets."""
+    try:
+        engine = get_db_engine()
+        # Join MT_device and MT_spec_sheet
+        # Note: Using text() for raw SQL is easier for joins than pandas merge if we want to rely on DB
+        # But here we can also use pandas merge if we prefer.
+        # Let's use SQL for efficiency.
+        query = text("""
+            SELECT
+                d.type as "Device Type",
+                d.sheet_no as "Sheet No",
+                s.sheet_name as "Sheet Name",
+                d.status as "Status",
+                s.vdss_V as "Vdss (V)",
+                s.vgss_V as "Vgss (V)",
+                s.idss_A as "Idss (A)"
+            FROM MT_device d
+            LEFT JOIN MT_spec_sheet s ON d.sheet_no = s.sheet_no
+        """)
+
+        with engine.connect() as conn:
+            result = conn.execute(query)
+            # Convert to list of dicts
+            columns = result.keys()
+            data = [dict(zip(columns, row)) for row in result]
+
+        return {"data": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

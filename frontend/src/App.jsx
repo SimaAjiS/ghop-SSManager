@@ -1,65 +1,25 @@
-import { useState, useEffect } from 'react'
-import axios from 'axios'
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom'
 import './App.css'
-import Sidebar from './Sidebar'
-import DataTable from './DataTable'
+import MasterView from './pages/MasterView'
+import UserView from './pages/UserView'
 
 function App() {
-  const [tables, setTables] = useState([])
-  const [selectedTable, setSelectedTable] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-
-  useEffect(() => {
-    const fetchTables = async () => {
-      try {
-        const response = await axios.get('http://localhost:8000/api/tables')
-        setTables(response.data.tables)
-        if (response.data.tables.length > 0) {
-          setSelectedTable(response.data.tables[0])
-        }
-      } catch (err) {
-        setError('Failed to load tables. Please ensure the backend is running.')
-        console.error(err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchTables()
-  }, [])
-
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        Loading application...
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'red' }}>
-        {error}
-      </div>
-    )
-  }
-
   return (
-    <div className="app-container">
-      <Sidebar
-        tables={tables}
-        selectedTable={selectedTable}
-        onSelectTable={setSelectedTable}
-      />
-      {selectedTable ? (
-        <DataTable tableName={selectedTable} />
-      ) : (
-        <div className="main-content">
-          <div className="no-data">Select a table to view data</div>
+    <Router>
+      <div className="app-root">
+        <nav className="top-nav" style={{ padding: '10px', background: '#f0f0f0', borderBottom: '1px solid #ddd', display: 'flex', gap: '20px' }}>
+          <Link to="/master" style={{ textDecoration: 'none', color: '#333', fontWeight: 'bold' }}>Master View (Admin)</Link>
+          <Link to="/user" style={{ textDecoration: 'none', color: '#333', fontWeight: 'bold' }}>User View</Link>
+        </nav>
+        <div className="content-area" style={{ height: 'calc(100vh - 41px)' }}>
+          <Routes>
+            <Route path="/master" element={<MasterView />} />
+            <Route path="/user" element={<UserView />} />
+            <Route path="/" element={<MasterView />} /> {/* Default to Master View for now */}
+          </Routes>
         </div>
-      )}
-    </div>
+      </div>
+    </Router>
   )
 }
 

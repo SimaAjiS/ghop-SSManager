@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { ArrowUp, ArrowDown, Search, AlertCircle } from 'lucide-react';
 
-const DataTable = ({ tableName }) => {
+const DataTable = ({ tableName, customUrl, customData }) => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -10,13 +10,19 @@ const DataTable = ({ tableName }) => {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 
   useEffect(() => {
-    if (!tableName) return;
+    if (customData) {
+        setData(customData);
+        return;
+    }
+
+    if (!tableName && !customUrl) return;
 
     const fetchData = async () => {
       setLoading(true);
       setError(null);
       try {
-        const response = await axios.get(`http://localhost:8000/api/tables/${tableName}`);
+        const url = customUrl || `http://localhost:8000/api/tables/${tableName}`;
+        const response = await axios.get(url);
         setData(response.data.data);
       } catch (err) {
         setError(err.message);
@@ -26,7 +32,7 @@ const DataTable = ({ tableName }) => {
     };
 
     fetchData();
-  }, [tableName]);
+  }, [tableName, customUrl, customData]);
 
   const handleSort = (key) => {
     let direction = 'asc';
@@ -53,6 +59,15 @@ const DataTable = ({ tableName }) => {
         const aVal = a[sortConfig.key];
         const bVal = b[sortConfig.key];
 
+        // Handle null/undefined values - always put them at the end
+        const aIsNull = aVal === null || aVal === undefined || aVal === '';
+        const bIsNull = bVal === null || bVal === undefined || bVal === '';
+
+        if (aIsNull && bIsNull) return 0;
+        if (aIsNull) return 1; // a goes to end
+        if (bIsNull) return -1; // b goes to end
+
+        // Both values are non-null, compare normally
         if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
         if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
         return 0;
