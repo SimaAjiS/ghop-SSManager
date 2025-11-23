@@ -1,11 +1,52 @@
 import React from 'react';
-import { X, Printer } from 'lucide-react';
+import { X, Printer, FileSpreadsheet } from 'lucide-react';
 
 const DetailDrawer = ({ isOpen, onClose, title, data }) => {
   if (!isOpen) return null;
 
   const handlePrint = () => {
+    const originalTitle = document.title;
+    const sheetNo = getVal(data?.device, 'sheet_no');
+    const sheetName = getVal(data?.device, 'sheet_name');
+    document.title = `${sheetNo}_${sheetName}`;
     window.print();
+    document.title = originalTitle;
+  };
+
+  const handleExport = async () => {
+    if (!data || !data.device) return;
+
+    try {
+        const deviceType = data.device.type;
+        const response = await fetch(`http://localhost:8000/api/devices/${deviceType}/export-excel`);
+
+        if (!response.ok) {
+            throw new Error('Export failed');
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+
+        // Try to get filename from header
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = `SpecSheet_${deviceType}.xlsx`;
+        if (contentDisposition) {
+            const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+            if (filenameMatch && filenameMatch.length === 2)
+                filename = filenameMatch[1];
+        }
+
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+    } catch (error) {
+        console.error('Export error:', error);
+        alert('Failed to export Excel file.');
+    }
   };
 
   // Helper to safely get values
@@ -30,6 +71,9 @@ const DetailDrawer = ({ isOpen, onClose, title, data }) => {
           <div style={{ display: 'flex', gap: '1rem' }}>
             <button onClick={handlePrint} className="btn btn-ghost" title="Print">
                 <Printer size={20} />
+            </button>
+            <button onClick={handleExport} className="btn btn-ghost" title="Export Excel">
+                <FileSpreadsheet size={20} />
             </button>
             <button onClick={onClose} className="btn btn-ghost">
                 <X size={24} />
@@ -65,7 +109,7 @@ const DetailDrawer = ({ isOpen, onClose, title, data }) => {
 
                 {/* Type Row */}
                 <div className="spec-row type-row">
-                    <span className="label">TYPE: {getVal(device, 'type')}</span>
+                    <span className="label">TYPE: {getVal(device, 'sheet_name')}</span>
                 </div>
 
                 {/* Chip Info Grid */}
