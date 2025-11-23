@@ -1,5 +1,5 @@
 import React from 'react';
-import { Table, Database, ArrowLeft, List, Settings } from 'lucide-react';
+import { Table, Database, ArrowLeft, List, Settings, FileSpreadsheet } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const Sidebar = ({
@@ -35,7 +35,7 @@ const Sidebar = ({
             onClick={() => onViewModeChange('masterList')}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Database size={18} strokeWidth={1.5} />
+              <FileSpreadsheet size={18} strokeWidth={1.5} />
               <span>Master Tables</span>
             </div>
           </li>
