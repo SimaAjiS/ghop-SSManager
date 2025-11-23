@@ -52,12 +52,12 @@ const DetailDrawer = ({ isOpen, onClose, title, data }) => {
   // Helper to format condition string
   const formatCondition = (char) => {
     const parts = [];
-    if (char.bias_vgs) parts.push(`Vgs=${char.bias_vgs}`);
-    if (char.bias_igs) parts.push(`Igs=${char.bias_igs}`);
-    if (char.bias_vds) parts.push(`Vds=${char.bias_vds}`);
-    if (char.bias_ids) parts.push(`Ids=${char.bias_ids}`);
-    if (char.bias_vss) parts.push(`Vss=${char.bias_vss}`);
-    if (char.bias_iss) parts.push(`Iss=${char.bias_iss}`);
+    if (char.bias_vgs) parts.push(`VGS=${char.bias_vgs}`);
+    if (char.bias_igs) parts.push(`IGS=${char.bias_igs}`);
+    if (char.bias_vds) parts.push(`VDS=${char.bias_vds}`);
+    if (char.bias_ids) parts.push(`IDS=${char.bias_ids}`);
+    if (char.bias_vss) parts.push(`VSS=${char.bias_vss}`);
+    if (char.bias_iss) parts.push(`ISS=${char.bias_iss}`);
     if (char.cond) parts.push(char.cond);
 
     return parts.join(', ');
