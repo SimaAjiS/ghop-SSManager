@@ -45,7 +45,7 @@ mt_device = Table(
     Column('barrier', String),
     Column('top_metal', String),
     Column('passivation', String),
-    Column('wafer_thickness', BigInteger),
+    Column('wafer_thickness', String),  # Changed from BigInteger to String to match Excel data format
     Column('back_metal', String),
     Column('status', String),
     Column('更新日', Date)
@@ -99,7 +99,7 @@ mt_maskset = Table(
     Column('chip_x_mm', Float),
     Column('chip_y_mm', Float),
     Column('dicing_line_um', Integer),
-    Column('pdpw', Integer),
+    Column('pdpw', String),  # Changed from Integer to String to handle comma-separated values like "23,318"
     Column('appearance', String),
     Column('pad_x_gate_um', Integer),
     Column('pad_y_gate_um', Integer),
