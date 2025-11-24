@@ -28,5 +28,5 @@ TABLE_ORDER = [
     "MT_passivation",
     "MT_wafer_thickness",
     "MT_back_metal",
-    "MT_status"
+    "MT_status",
 ]

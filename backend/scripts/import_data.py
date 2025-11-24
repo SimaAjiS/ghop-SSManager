@@ -1,13 +1,14 @@
 import pandas as pd
 import sqlalchemy
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 import os
 import sys
 
 # Add parent directory to path to import settings
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import settings
-from schema import metadata
+import settings  # type: ignore
+from schema import metadata  # type: ignore
+
 
 def import_data():
     """Imports data from Excel to SQLite using strict schema."""
@@ -33,7 +34,9 @@ def import_data():
         with engine.connect() as conn:
             for sheet_name in sheet_names:
                 if sheet_name not in metadata.tables:
-                    print(f"Skipping sheet '{sheet_name}' as it is not defined in schema.")
+                    print(
+                        f"Skipping sheet '{sheet_name}' as it is not defined in schema."
+                    )
                     continue
 
                 print(f"Processing sheet: {sheet_name}")
@@ -47,14 +50,14 @@ def import_data():
                 # However, for tables where we defined other PKs (MT_device, MT_spec_sheet), we need to be careful.
 
                 # Check if 'id' is in Excel and drop it
-                id_col = next((c for c in df.columns if c.lower() == 'id'), None)
+                id_col = next((c for c in df.columns if c.lower() == "id"), None)
                 if id_col:
                     print(f"  Removing existing '{id_col}' column from Excel data.")
                     df = df.drop(columns=[id_col])
 
                 # 2. Add missing columns (e.g. +/- in MT_elec_characteristic)
                 for col in table.columns:
-                    if col.name not in df.columns and col.name != 'id':
+                    if col.name not in df.columns and col.name != "id":
                         # 'id' is auto-increment PK usually, so we don't add it if missing.
                         # But for MT_device and MT_spec_sheet, 'id' is just a column, not PK.
                         # If it's not in Excel, we might need to leave it null or fill it?
@@ -62,23 +65,28 @@ def import_data():
                         # If it's not in Excel, it will be Null.
 
                         # Special case: +/- column
-                        if col.name == '+/-':
-                             print(f"  Adding missing column '{col.name}' (initialized to None).")
-                             df[col.name] = None
+                        if col.name == "+/-":
+                            print(
+                                f"  Adding missing column '{col.name}' (initialized to None)."
+                            )
+                            df[col.name] = None
                         # We don't auto-add other columns to avoid masking errors, unless we want to be robust.
                         # But let's assume Excel matches schema mostly.
 
                 # 3. Type conversion and cleaning
                 # Convert date columns
-                if '更新日' in df.columns:
-                    df['更新日'] = pd.to_datetime(df['更新日'], errors='coerce').dt.date
+                if "更新日" in df.columns:
+                    df["更新日"] = pd.to_datetime(df["更新日"], errors="coerce").dt.date
 
                 # Coerce numeric columns
                 for col in table.columns:
-                    if isinstance(col.type, (sqlalchemy.Integer, sqlalchemy.Float, sqlalchemy.BigInteger)):
+                    if isinstance(
+                        col.type,
+                        (sqlalchemy.Integer, sqlalchemy.Float, sqlalchemy.BigInteger),
+                    ):
                         if col.name in df.columns:
-                             # Use pd.to_numeric to coerce non-numeric values to NaN
-                             df[col.name] = pd.to_numeric(df[col.name], errors='coerce')
+                            # Use pd.to_numeric to coerce non-numeric values to NaN
+                            df[col.name] = pd.to_numeric(df[col.name], errors="coerce")
 
                 # Insert data
                 # We use to_sql with if_exists='append' because we already created tables.
@@ -89,7 +97,9 @@ def import_data():
                 df_to_insert = df[valid_columns]
 
                 try:
-                    df_to_insert.to_sql(sheet_name, conn, if_exists='append', index=False)
+                    df_to_insert.to_sql(
+                        sheet_name, conn, if_exists="append", index=False
+                    )
                     print(f"  Imported {len(df)} rows into '{sheet_name}'.")
                 except Exception as e:
                     print(f"  Error importing '{sheet_name}': {e}")
@@ -100,8 +110,10 @@ def import_data():
         print(f"An error occurred: {e}")
         # Print full traceback for debugging
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
+
 
 if __name__ == "__main__":
     import_data()
