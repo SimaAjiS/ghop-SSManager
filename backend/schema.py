@@ -200,3 +200,15 @@ mt_wafer_thickness = Table(
     Column("wafer_thickness_display", String),
     Column("更新日", Date),
 )
+
+# Table: AuditLog
+audit_log = Table(
+    "AuditLog",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("timestamp", String),  # ISO format datetime string
+    Column("user", String),
+    Column("action", String),
+    Column("target", String),
+    Column("details", String),
+)
