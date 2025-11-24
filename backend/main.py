@@ -2,10 +2,14 @@ from fastapi import FastAPI, HTTPException
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse
 from sqlalchemy import create_engine, inspect, text
 import os
 import openpyxl
 from openpyxl.worksheet.worksheet import Worksheet
+import pandas as pd
+import json
+from io import BytesIO
 from . import settings
 
 app = FastAPI(title="Master Table Manager API")
@@ -40,6 +44,68 @@ def get_db_engine():
     if not os.path.exists(settings.DB_FILE):
         raise Exception("Database file not found. Please run import script first.")
     return create_engine(settings.DB_URL)
+
+
+# Helper function for filtering
+def apply_filters(stmt, filters_dict, column_map):
+    """
+    Applies filters to the SQLAlchemy statement.
+    filters_dict: {col_name: filter_value}
+    column_map: {col_name: sqlalchemy_column_obj}
+    """
+    from sqlalchemy import cast, String, and_
+
+    conditions = []
+    for col_name, value in filters_dict.items():
+        if not value or col_name not in column_map:
+            continue
+
+        col = column_map[col_name]
+        val_str = str(value).strip()
+
+        # Check for operators
+        # Note: This simple parsing assumes the column is numeric if using operators.
+        # If casting to String for ILIKE, operators won't work as expected for numbers unless we cast back or don't cast.
+        # For now, we try to parse as float for operators. If fail, fall back to string match.
+
+        is_operator = False
+        if val_str.startswith(">="):
+            try:
+                val = float(val_str[2:])
+                conditions.append(col >= val)
+                is_operator = True
+            except ValueError:
+                pass
+        elif val_str.startswith("<="):
+            try:
+                val = float(val_str[2:])
+                conditions.append(col <= val)
+                is_operator = True
+            except ValueError:
+                pass
+        elif val_str.startswith(">"):
+            try:
+                val = float(val_str[1:])
+                conditions.append(col > val)
+                is_operator = True
+            except ValueError:
+                pass
+        elif val_str.startswith("<"):
+            try:
+                val = float(val_str[1:])
+                conditions.append(col < val)
+                is_operator = True
+            except ValueError:
+                pass
+
+        if not is_operator:
+            # Default to ILIKE for string match
+            conditions.append(cast(col, String).ilike(f"%{val_str}%"))
+
+    if conditions:
+        stmt = stmt.where(and_(*conditions))
+
+    return stmt
 
 
 # Defined table order
@@ -79,8 +145,9 @@ def get_table_data(
     search: Optional[str] = None,
     sort_by: Optional[str] = None,
     descending: bool = False,
+    filters: Optional[str] = None,
 ):
-    """Returns paginated data for a specific table with optional search and sort."""
+    """Returns paginated data for a specific table with optional search, sort, and column filters."""
     try:
         engine = get_db_engine()
         inspector = inspect(engine)
@@ -93,8 +160,6 @@ def get_table_data(
         offset = (page - 1) * limit
 
         # Build query
-        # We need to dynamically build the query based on columns
-        # Since we don't have ORM models for all tables, we'll use Table reflection or raw SQL construction safely
         from sqlalchemy import (
             MetaData,
             Table,
@@ -113,20 +178,24 @@ def get_table_data(
         # Base query
         stmt = select(table)
 
-        # Apply Search
+        # Apply Global Search
         if search:
-            # Create a list of ILIKE conditions for all text-based columns
-            # For simplicity in this generic view, we'll cast to string and search
-            # But for performance, we should ideally restrict to text columns.
-            # Let's try to search in all columns by casting to text.
             search_conditions = []
             for column in table.columns:
-                # Basic search implementation: cast to string and check contains
-                # This might be slow for huge tables but better than nothing
                 search_conditions.append(cast(column, String).ilike(f"%{search}%"))
 
             if search_conditions:
                 stmt = stmt.where(or_(*search_conditions))
+
+        # Apply Column Filters
+        if filters:
+            try:
+                filters_dict = json.loads(filters)
+                # Map column names to column objects
+                column_map = {c.name: c for c in table.columns}
+                stmt = apply_filters(stmt, filters_dict, column_map)
+            except json.JSONDecodeError:
+                pass  # Ignore invalid JSON
 
         # Apply Sort
         if sort_by:
@@ -136,13 +205,8 @@ def get_table_data(
                     stmt = stmt.order_by(desc(col))
                 else:
                     stmt = stmt.order_by(asc(col))
-            else:
-                # If sort column doesn't exist, ignore or default?
-                # Let's ignore to avoid erroring out on UI mismatch
-                pass
 
         # Count total results (before pagination)
-        # We need a separate query for count
         count_stmt = select(func.count()).select_from(stmt.subquery())
 
         # Apply Pagination
@@ -154,8 +218,6 @@ def get_table_data(
 
             # Execute data fetch
             result = conn.execute(stmt)
-            # Convert to list of dicts
-            # Handle NaN/None: SQLAlchemy returns None for NULL, which is what we want for JSON
             data = [dict(row._mapping) for row in result]
 
         total_pages = (total_records + limit - 1) // limit if limit > 0 else 1
@@ -178,6 +240,99 @@ def get_table_data(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/tables/{table_name}/export")
+def export_table_data(
+    table_name: str,
+    search: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    descending: bool = False,
+    filters: Optional[str] = None,
+    format: str = "excel",  # excel or csv
+):
+    """Exports data for a specific table with optional search, sort, and column filters."""
+    try:
+        engine = get_db_engine()
+        inspector = inspect(engine)
+        if table_name not in inspector.get_table_names():
+            raise HTTPException(
+                status_code=404, detail=f"Table '{table_name}' not found"
+            )
+
+        from sqlalchemy import (
+            MetaData,
+            Table,
+            select,
+            or_,
+            asc,
+            desc,
+            cast,
+            String,
+        )
+
+        metadata = MetaData()
+        table = Table(table_name, metadata, autoload_with=engine)
+
+        # Base query
+        stmt = select(table)
+
+        # Apply Global Search
+        if search:
+            search_conditions = []
+            for column in table.columns:
+                search_conditions.append(cast(column, String).ilike(f"%{search}%"))
+
+            if search_conditions:
+                stmt = stmt.where(or_(*search_conditions))
+
+        # Apply Column Filters
+        if filters:
+            try:
+                filters_dict = json.loads(filters)
+                column_map = {c.name: c for c in table.columns}
+                stmt = apply_filters(stmt, filters_dict, column_map)
+            except json.JSONDecodeError:
+                pass
+
+        # Apply Sort
+        if sort_by:
+            if sort_by in table.columns:
+                col = table.columns[sort_by]
+                if descending:
+                    stmt = stmt.order_by(desc(col))
+                else:
+                    stmt = stmt.order_by(asc(col))
+
+        # Execute query
+        with engine.connect() as conn:
+            result = conn.execute(stmt)
+            data = [dict(row._mapping) for row in result]
+
+        # Convert to DataFrame
+        df = pd.DataFrame(data)
+
+        output = BytesIO()
+        if format == "csv":
+            df.to_csv(output, index=False)
+            media_type = "text/csv"
+            filename = f"{table_name}.csv"
+        else:
+            df.to_excel(output, index=False, engine="openpyxl")
+            media_type = (
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            filename = f"{table_name}.xlsx"
+
+        output.seek(0)
+        headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+        return StreamingResponse(output, headers=headers, media_type=media_type)
+
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/user/devices")
 def get_user_devices(
     page: int = 1,
@@ -185,6 +340,7 @@ def get_user_devices(
     search: Optional[str] = None,
     sort_by: Optional[str] = None,
     descending: bool = False,
+    filters: Optional[str] = None,
 ):
     """Returns a paginated joined view of devices and their spec sheets."""
     try:
@@ -221,34 +377,36 @@ def get_user_devices(
             )
         )
 
+        # Define column map for filters and sort
+        column_map = {
+            "Device Type": mt_device.c.type,
+            "Sheet No": mt_device.c.sheet_no,
+            "Sheet Name": mt_spec_sheet.c.sheet_name,
+            "Status": mt_device.c.status,
+            "Vdss (V)": mt_spec_sheet.c.vdss_V,
+            "Vgss (V)": mt_spec_sheet.c.vgss_V,
+            "Idss (A)": mt_spec_sheet.c.idss_A,
+        }
+
         # Apply Search
         if search:
             search_conditions = [
-                cast(mt_device.c.type, String).ilike(f"%{search}%"),
-                cast(mt_device.c.sheet_no, String).ilike(f"%{search}%"),
-                cast(mt_spec_sheet.c.sheet_name, String).ilike(f"%{search}%"),
-                cast(mt_device.c.status, String).ilike(f"%{search}%"),
-                cast(mt_spec_sheet.c.vdss_V, String).ilike(f"%{search}%"),
-                cast(mt_spec_sheet.c.vgss_V, String).ilike(f"%{search}%"),
-                cast(mt_spec_sheet.c.idss_A, String).ilike(f"%{search}%"),
+                cast(col, String).ilike(f"%{search}%") for col in column_map.values()
             ]
             stmt = stmt.where(or_(*search_conditions))
 
+        # Apply Column Filters
+        if filters:
+            try:
+                filters_dict = json.loads(filters)
+                stmt = apply_filters(stmt, filters_dict, column_map)
+            except json.JSONDecodeError:
+                pass
+
         # Apply Sort
         if sort_by:
-            # Map display names to actual columns
-            sort_column_map = {
-                "Device Type": mt_device.c.type,
-                "Sheet No": mt_device.c.sheet_no,
-                "Sheet Name": mt_spec_sheet.c.sheet_name,
-                "Status": mt_device.c.status,
-                "Vdss (V)": mt_spec_sheet.c.vdss_V,
-                "Vgss (V)": mt_spec_sheet.c.vgss_V,
-                "Idss (A)": mt_spec_sheet.c.idss_A,
-            }
-
-            if sort_by in sort_column_map:
-                col = sort_column_map[sort_by]
+            if sort_by in column_map:
+                col = column_map[sort_by]
                 if descending:
                     stmt = stmt.order_by(desc(col))
                 else:
@@ -278,6 +436,113 @@ def get_user_devices(
             "limit": limit,
             "total_pages": total_pages,
         }
+
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/user/devices/export")
+def export_user_devices(
+    search: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    descending: bool = False,
+    filters: Optional[str] = None,
+    format: str = "excel",
+):
+    """Exports joined view of devices and their spec sheets."""
+    try:
+        engine = get_db_engine()
+
+        from sqlalchemy import (
+            MetaData,
+            Table,
+            select,
+            or_,
+            asc,
+            desc,
+            cast,
+            String,
+        )
+
+        metadata = MetaData()
+        mt_device = Table("MT_device", metadata, autoload_with=engine)
+        mt_spec_sheet = Table("MT_spec_sheet", metadata, autoload_with=engine)
+
+        # Build join query
+        stmt = select(
+            mt_device.c.type.label("Device Type"),
+            mt_device.c.sheet_no.label("Sheet No"),
+            mt_spec_sheet.c.sheet_name.label("Sheet Name"),
+            mt_device.c.status.label("Status"),
+            mt_spec_sheet.c.vdss_V.label("Vdss (V)"),
+            mt_spec_sheet.c.vgss_V.label("Vgss (V)"),
+            mt_spec_sheet.c.idss_A.label("Idss (A)"),
+        ).select_from(
+            mt_device.outerjoin(
+                mt_spec_sheet, mt_device.c.sheet_no == mt_spec_sheet.c.sheet_no
+            )
+        )
+
+        column_map = {
+            "Device Type": mt_device.c.type,
+            "Sheet No": mt_device.c.sheet_no,
+            "Sheet Name": mt_spec_sheet.c.sheet_name,
+            "Status": mt_device.c.status,
+            "Vdss (V)": mt_spec_sheet.c.vdss_V,
+            "Vgss (V)": mt_spec_sheet.c.vgss_V,
+            "Idss (A)": mt_spec_sheet.c.idss_A,
+        }
+
+        # Apply Search
+        if search:
+            search_conditions = [
+                cast(col, String).ilike(f"%{search}%") for col in column_map.values()
+            ]
+            stmt = stmt.where(or_(*search_conditions))
+
+        # Apply Column Filters
+        if filters:
+            try:
+                filters_dict = json.loads(filters)
+                stmt = apply_filters(stmt, filters_dict, column_map)
+            except json.JSONDecodeError:
+                pass
+
+        # Apply Sort
+        if sort_by:
+            if sort_by in column_map:
+                col = column_map[sort_by]
+                if descending:
+                    stmt = stmt.order_by(desc(col))
+                else:
+                    stmt = stmt.order_by(asc(col))
+
+        # Execute query
+        with engine.connect() as conn:
+            result = conn.execute(stmt)
+            data = [dict(row._mapping) for row in result]
+
+        # Convert to DataFrame
+        df = pd.DataFrame(data)
+
+        output = BytesIO()
+        if format == "csv":
+            df.to_csv(output, index=False)
+            media_type = "text/csv"
+            filename = "user_devices.csv"
+        else:
+            df.to_excel(output, index=False, engine="openpyxl")
+            media_type = (
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            filename = "user_devices.xlsx"
+
+        output.seek(0)
+        headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+        return StreamingResponse(output, headers=headers, media_type=media_type)
 
     except Exception as e:
         import traceback
