@@ -2,7 +2,7 @@
 cd /d "%~dp0"
 
 echo Starting Backend...
-start "Backend Server" cmd /k "uv run uvicorn app:app --reload --port 8000"
+start "Backend Server" cmd /k "uv run uvicorn backend.main:app --reload --port 8000"
 
 echo Starting Frontend...
 cd frontend

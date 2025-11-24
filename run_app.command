@@ -11,7 +11,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "Starting Backend..."
-uv run uvicorn app:app --reload --port 8000 &
+uv run uvicorn backend.main:app --reload --port 8000 &
 BACKEND_PID=$!
 
 # Wait a moment for backend to start
