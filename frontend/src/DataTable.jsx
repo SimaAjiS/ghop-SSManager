@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import { ArrowUp, ArrowDown, Search, AlertCircle } from 'lucide-react';
+import { ArrowUp, ArrowDown, Search, AlertCircle, Filter, Download } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
 const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent }) => {
@@ -17,6 +17,11 @@ const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent 
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 
+  // Filter State
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({});
+  const [debouncedFilters, setDebouncedFilters] = useState({});
+
   // Debounce search term
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -26,12 +31,24 @@ const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent 
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
+  // Debounce filters
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedFilters(filters);
+      setCurrentPage(1);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [filters]);
+
   // Reset page when table changes
   useEffect(() => {
     setCurrentPage(1);
     setSearchTerm('');
     setDebouncedSearchTerm('');
     setSortConfig({ key: null, direction: 'asc' });
+    setFilters({});
+    setDebouncedFilters({});
+    setShowFilters(false);
   }, [tableName, customUrl]);
 
   // Fetch Data
@@ -63,6 +80,11 @@ const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent 
             params.append('descending', sortConfig.direction === 'desc');
         }
 
+        // Add filters
+        if (Object.keys(debouncedFilters).length > 0) {
+            params.append('filters', JSON.stringify(debouncedFilters));
+        }
+
         const response = await axios.get(`${url}?${params.toString()}`);
 
         if (response.data.data) {
@@ -88,7 +110,7 @@ const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent 
     };
 
     fetchData();
-  }, [tableName, customUrl, customData, currentPage, pageSize, debouncedSearchTerm, sortConfig]);
+  }, [tableName, customUrl, customData, currentPage, pageSize, debouncedSearchTerm, sortConfig, debouncedFilters]);
 
   const handleSort = (key) => {
     let direction = 'asc';
@@ -96,6 +118,39 @@ const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent 
       direction = 'desc';
     }
     setSortConfig({ key, direction });
+  };
+
+  const handleFilterChange = (col, value) => {
+      setFilters(prev => ({
+          ...prev,
+          [col]: value
+      }));
+  };
+
+  const handleExport = () => {
+      // Construct export URL
+      let baseUrl = customUrl || `http://localhost:8000/api/tables/${tableName}`;
+      // Append /export if not already there (assuming customUrl follows convention)
+      // If customUrl is /api/user/devices, we want /api/user/devices/export
+      // If baseUrl ends with /, remove it
+      if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
+
+      const exportUrl = `${baseUrl}/export`;
+
+      const params = new URLSearchParams();
+      if (debouncedSearchTerm) {
+          params.append('search', debouncedSearchTerm);
+      }
+      if (sortConfig.key) {
+          params.append('sort_by', sortConfig.key);
+          params.append('descending', sortConfig.direction === 'desc');
+      }
+      if (Object.keys(debouncedFilters).length > 0) {
+          params.append('filters', JSON.stringify(debouncedFilters));
+      }
+
+      // Trigger download
+      window.open(`${exportUrl}?${params.toString()}`, '_blank');
   };
 
   // Client-side processing for customData ONLY
@@ -161,6 +216,39 @@ const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent 
                 onChange={(e) => setSearchTerm(e.target.value)}
             />
             </div>
+            <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="btn btn-ghost"
+                title="検索条件を指定してデータを絞り込みます"
+                style={{
+                    padding: '0.5rem',
+                    borderRadius: '50%',
+                    width: '40px',
+                    height: '40px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    ...(showFilters ? { backgroundColor: 'rgba(0, 0, 0, 0.05)' } : {})
+                }}
+            >
+                <Filter size={20} />
+            </button>
+            <button
+                onClick={handleExport}
+                className="btn btn-ghost"
+                title="現在表示されているデータをExcelファイルとしてダウンロードします"
+                style={{
+                    padding: '0.5rem',
+                    borderRadius: '50%',
+                    width: '40px',
+                    height: '40px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                }}
+            >
+                <Download size={20} />
+            </button>
             <ThemeToggle />
         </div>
       </div>
@@ -183,6 +271,30 @@ const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent 
                   </th>
                 ))}
               </tr>
+              {showFilters && (
+                  <tr>
+                      {columns.map((col) => (
+                          <th key={`filter-${col}`} style={{ padding: '4px 8px' }}>
+                              <input
+                                  type="text"
+                                  placeholder={`Filter ${col}...`}
+                                  value={filters[col] || ''}
+                                  onChange={(e) => handleFilterChange(col, e.target.value)}
+                                  style={{
+                                      width: '100%',
+                                      padding: '4px 8px',
+                                      borderRadius: '4px',
+                                      border: '1px solid var(--border-color)',
+                                      fontSize: '0.8rem',
+                                      backgroundColor: 'var(--bg-primary)',
+                                      color: 'var(--text-primary)'
+                                  }}
+                                  onClick={(e) => e.stopPropagation()} // Prevent sort trigger
+                              />
+                          </th>
+                      ))}
+                  </tr>
+              )}
             </thead>
             <tbody>
               {processedData.length > 0 ? (
