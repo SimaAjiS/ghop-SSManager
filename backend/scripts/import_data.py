@@ -3,15 +3,32 @@ import sqlalchemy
 from sqlalchemy import create_engine
 import os
 import sys
+from datetime import datetime
+from pydantic import ValidationError
 
 # Add parent directory to path to import settings
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import settings  # type: ignore
 from schema import metadata  # type: ignore
+from models import (  # type: ignore
+    MT_BackMetal,
+    MT_Barrier,
+    MT_Device,
+    MT_ElecCharacteristic,
+    MT_Esd,
+    MT_Item,
+    MT_Maskset,
+    MT_Passivation,
+    MT_SpecSheet,
+    MT_Status,
+    MT_TopMetal,
+    MT_Unit,
+    MT_WaferThickness,
+)
 
 
 def import_data():
-    """Imports data from Excel to SQLite using strict schema."""
+    """Imports data from Excel to SQLite using strict schema and Pydantic validation."""
     if not os.path.exists(settings.MASTER_EXCEL_FILE):
         print(f"Error: Input file '{settings.MASTER_EXCEL_FILE}' not found.")
         sys.exit(1)
@@ -23,6 +40,11 @@ def import_data():
         xls = pd.ExcelFile(settings.MASTER_EXCEL_FILE)
         sheet_names = xls.sheet_names
         print(f"Found sheets: {sheet_names}")
+
+        # Load all sheets into memory for FK validation
+        dfs = {}
+        for sheet in sheet_names:
+            dfs[sheet] = pd.read_excel(xls, sheet_name=sheet)
 
         engine = create_engine(settings.DB_URL)
 
@@ -36,18 +58,44 @@ def import_data():
         # Drop tables except AuditLog
         for table_name in existing_tables:
             if table_name != "AuditLog":
-                # We need to drop table using SQL or metadata
-                # Since we have metadata, we can try to find it there or use raw SQL
-                # Using raw SQL is safer to ensure we drop what exists
                 with engine.connect() as conn:
                     conn.execute(sqlalchemy.text(f"DROP TABLE IF EXISTS {table_name}"))
                     conn.commit()
 
-        # Create all tables (this will create AuditLog if missing, and others)
+        # Create all tables
         metadata.create_all(engine)
+
+        # Model Mapping
+        model_mapping = {
+            "MT_back_metal": MT_BackMetal,
+            "MT_barrier": MT_Barrier,
+            "MT_device": MT_Device,
+            "MT_elec_characteristic": MT_ElecCharacteristic,
+            "MT_esd": MT_Esd,
+            "MT_item": MT_Item,
+            "MT_maskset": MT_Maskset,
+            "MT_passivation": MT_Passivation,
+            "MT_spec_sheet": MT_SpecSheet,
+            "MT_status": MT_Status,
+            "MT_top_metal": MT_TopMetal,
+            "MT_unit": MT_Unit,
+            "MT_wafer_thickness": MT_WaferThickness,
+        }
+
+        # FK Constraints: (Table, Column) -> (RefTable, RefColumn)
+        fk_constraints = {
+            ("MT_device", "sheet_no"): ("MT_spec_sheet", "sheet_no"),
+            ("MT_device", "barrier"): ("MT_barrier", "barrier"),
+            ("MT_device", "top_metal"): ("MT_top_metal", "top_metal"),
+            ("MT_device", "passivation"): ("MT_passivation", "passivation_type"),
+            ("MT_device", "back_metal"): ("MT_back_metal", "back_metal"),
+            ("MT_device", "status"): ("MT_status", "status"),
+            ("MT_spec_sheet", "maskset"): ("MT_maskset", "maskset"),
+        }
 
         total_imported_rows = 0
         imported_tables = []
+        validation_errors = []
 
         with engine.connect() as conn:
             for sheet_name in sheet_names:
@@ -58,41 +106,28 @@ def import_data():
                     continue
 
                 print(f"Processing sheet: {sheet_name}")
-                df = pd.read_excel(xls, sheet_name=sheet_name)
+                df = dfs[sheet_name]
                 table = metadata.tables[sheet_name]
+                model = model_mapping.get(sheet_name)
+
+                if not model:
+                    print(
+                        f"Warning: No Pydantic model found for {sheet_name}. Skipping validation."
+                    )
 
                 # Pre-processing
                 # 1. Handle 'id' column
-                # If table has 'id' as PK and auto-increment, we should generally let DB handle it unless we want to preserve Excel IDs.
-                # Requirement: "IDという名前のカラムがExcelに存在する場合は、DB側の自動採番を優先するため除外される。"
-                # However, for tables where we defined other PKs (MT_device, MT_spec_sheet), we need to be careful.
-
-                # Check if 'id' is in Excel and drop it
                 id_col = next((c for c in df.columns if c.lower() == "id"), None)
                 if id_col:
-                    print(f"  Removing existing '{id_col}' column from Excel data.")
                     df = df.drop(columns=[id_col])
 
                 # 2. Add missing columns (e.g. +/- in MT_elec_characteristic)
                 for col in table.columns:
                     if col.name not in df.columns and col.name != "id":
-                        # 'id' is auto-increment PK usually, so we don't add it if missing.
-                        # But for MT_device and MT_spec_sheet, 'id' is just a column, not PK.
-                        # If it's not in Excel, we might need to leave it null or fill it?
-                        # Actually, for MT_device and MT_spec_sheet, 'id' is defined as BigInteger but NOT PK.
-                        # If it's not in Excel, it will be Null.
-
-                        # Special case: +/- column
                         if col.name == "+/-":
-                            print(
-                                f"  Adding missing column '{col.name}' (initialized to None)."
-                            )
                             df[col.name] = None
-                        # We don't auto-add other columns to avoid masking errors, unless we want to be robust.
-                        # But let's assume Excel matches schema mostly.
 
                 # 3. Type conversion and cleaning
-                # Convert date columns
                 if "更新日" in df.columns:
                     df["更新日"] = pd.to_datetime(df["更新日"], errors="coerce").dt.date
 
@@ -105,46 +140,137 @@ def import_data():
                         if col.name in df.columns:
                             # Use pd.to_numeric to coerce non-numeric values to NaN
                             df[col.name] = pd.to_numeric(df[col.name], errors="coerce")
+                    elif isinstance(col.type, sqlalchemy.String):
+                        if col.name in df.columns:
+                            # Coerce to string, preserving None
+                            df[col.name] = df[col.name].apply(
+                                lambda x: str(x) if pd.notnull(x) else None
+                            )
 
-                # Insert data
-                # We use to_sql with if_exists='append' because we already created tables.
-                # We need to ensure columns match exactly.
+                # Validation Loop
+                valid_rows = []
+                for index, row in df.iterrows():
+                    row_dict = row.to_dict()
+                    # Clean NaNs to None for Pydantic
+                    row_dict = {
+                        k: (None if pd.isna(v) else v) for k, v in row_dict.items()
+                    }
 
-                # Filter df columns to only those in the table definition
-                valid_columns = [c.name for c in table.columns if c.name in df.columns]
-                df_to_insert = df[valid_columns]
+                    # 1. Pydantic Validation
+                    if model:
+                        try:
+                            model.model_validate(row_dict)
+                        except ValidationError as e:
+                            for err in e.errors():
+                                validation_errors.append(
+                                    {
+                                        "sheet": sheet_name,
+                                        "row": index
+                                        + 2,  # Excel row number (1-header + 1-index)
+                                        "column": err["loc"][0],
+                                        "error": err["msg"],
+                                        "value": row_dict.get(err["loc"][0]),
+                                    }
+                                )
+                            # RELAXATION: Do not skip row on Pydantic error, just log it.
+                            # continue
 
-                try:
-                    df_to_insert.to_sql(
-                        sheet_name, conn, if_exists="append", index=False
+                    # 2. FK Validation
+                    # fk_error = False # RELAXATION: We don't track this for skipping anymore
+                    for (t, c), (ref_t, ref_c) in fk_constraints.items():
+                        if (
+                            t == sheet_name
+                            and c in row_dict
+                            and row_dict[c] is not None
+                        ):
+                            val = row_dict[c]
+                            # Check if val exists in ref_t column ref_c
+                            # We use the original DF for reference to ensure we check against all potential data
+                            # But ideally we should check against valid data.
+                            # For now, check against the loaded DF.
+                            if ref_t in dfs:
+                                ref_df = dfs[ref_t]
+                                if ref_c in ref_df.columns:
+                                    # Use set for faster lookup
+                                    ref_values = set(ref_df[ref_c].dropna().astype(str))
+                                    # Convert val to str for comparison just in case
+                                    if str(val) not in ref_values:
+                                        validation_errors.append(
+                                            {
+                                                "sheet": sheet_name,
+                                                "row": index + 2,
+                                                "column": c,
+                                                "error": f"Foreign Key violation: Value '{val}' not found in {ref_t}.{ref_c}",
+                                                "value": val,
+                                            }
+                                        )
+                                        # fk_error = True # RELAXATION: Warning only
+
+                    # RELAXATION: Always add row, regardless of errors
+                    valid_rows.append(row_dict)
+
+                # Insert valid rows
+                if valid_rows:
+                    # Convert back to DF
+                    df_to_insert = pd.DataFrame(valid_rows)
+
+                    # Ensure columns match table definition
+                    valid_columns = [
+                        c.name for c in table.columns if c.name in df_to_insert.columns
+                    ]
+                    df_to_insert = df_to_insert[valid_columns]
+
+                    try:
+                        df_to_insert.to_sql(
+                            sheet_name, conn, if_exists="append", index=False
+                        )
+                        rows_count = len(df_to_insert)
+                        print(f"  Imported {rows_count} rows into '{sheet_name}'.")
+                        total_imported_rows += rows_count
+                        imported_tables.append(sheet_name)
+                    except Exception as e:
+                        print(f"  Error importing '{sheet_name}': {e}")
+                else:
+                    print(f"  No valid rows to import for '{sheet_name}'.")
+
+            # Report Errors
+            if validation_errors:
+                print("\n" + "=" * 50)
+                print("VALIDATION ERRORS FOUND")
+                print("=" * 50)
+                for err in validation_errors:
+                    print(
+                        f"Sheet: {err['sheet']}, Row: {err['row']}, Col: {err['column']}, Error: {err['error']}, Value: {err['value']}"
                     )
-                    rows_count = len(df)
-                    print(f"  Imported {rows_count} rows into '{sheet_name}'.")
-                    total_imported_rows += rows_count
-                    imported_tables.append(sheet_name)
-                except Exception as e:
-                    print(f"  Error importing '{sheet_name}': {e}")
+                print("=" * 50 + "\n")
+
+                print(f"Total Validation Errors: {len(validation_errors)}")
+                print(
+                    f"Rows with warnings (imported): {len(set((e['sheet'], e['row']) for e in validation_errors))}"
+                )
 
             # Log to AuditLog
-            from datetime import datetime
-
             audit_log_table = metadata.tables["AuditLog"]
+
+            details_msg = f"Imported {total_imported_rows} rows into {len(imported_tables)} tables."
+            if validation_errors:
+                details_msg += f" Found {len(validation_errors)} validation errors."
+
             conn.execute(
                 audit_log_table.insert().values(
                     timestamp=datetime.now().isoformat(),
                     user="System",
                     action="IMPORT",
                     target="ALL",
-                    details=f"Imported {total_imported_rows} rows into {len(imported_tables)} tables: {', '.join(imported_tables)}",
+                    details=details_msg,
                 )
             )
             conn.commit()
 
-        print("Import completed successfully.")
+        print("Import process completed.")
 
     except Exception as e:
         print(f"An error occurred: {e}")
-        # Print full traceback for debugging
         import traceback
 
         traceback.print_exc()
