@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ClipboardList } from 'lucide-react';
-import DataTable from '../DataTable';
+import DataTable from "../components/DataTable";
 import '../App.css';
 
 const AuditLogs = () => {
