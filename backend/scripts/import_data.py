@@ -26,10 +26,28 @@ def import_data():
 
         engine = create_engine(settings.DB_URL)
 
-        # Drop all tables and recreate them based on schema
-        print("Recreating database schema...")
-        metadata.drop_all(engine)
+        # Drop all tables and recreate them based on schema, but preserve AuditLog
+        print("Recreating database schema (preserving AuditLog)...")
+
+        # Reflect existing tables
+        inspector = sqlalchemy.inspect(engine)
+        existing_tables = inspector.get_table_names()
+
+        # Drop tables except AuditLog
+        for table_name in existing_tables:
+            if table_name != "AuditLog":
+                # We need to drop table using SQL or metadata
+                # Since we have metadata, we can try to find it there or use raw SQL
+                # Using raw SQL is safer to ensure we drop what exists
+                with engine.connect() as conn:
+                    conn.execute(sqlalchemy.text(f"DROP TABLE IF EXISTS {table_name}"))
+                    conn.commit()
+
+        # Create all tables (this will create AuditLog if missing, and others)
         metadata.create_all(engine)
+
+        total_imported_rows = 0
+        imported_tables = []
 
         with engine.connect() as conn:
             for sheet_name in sheet_names:
@@ -100,9 +118,27 @@ def import_data():
                     df_to_insert.to_sql(
                         sheet_name, conn, if_exists="append", index=False
                     )
-                    print(f"  Imported {len(df)} rows into '{sheet_name}'.")
+                    rows_count = len(df)
+                    print(f"  Imported {rows_count} rows into '{sheet_name}'.")
+                    total_imported_rows += rows_count
+                    imported_tables.append(sheet_name)
                 except Exception as e:
                     print(f"  Error importing '{sheet_name}': {e}")
+
+            # Log to AuditLog
+            from datetime import datetime
+
+            audit_log_table = metadata.tables["AuditLog"]
+            conn.execute(
+                audit_log_table.insert().values(
+                    timestamp=datetime.now().isoformat(),
+                    user="System",
+                    action="IMPORT",
+                    target="ALL",
+                    details=f"Imported {total_imported_rows} rows into {len(imported_tables)} tables: {', '.join(imported_tables)}",
+                )
+            )
+            conn.commit()
 
         print("Import completed successfully.")
 

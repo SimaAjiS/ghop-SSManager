@@ -57,7 +57,11 @@ function MasterView() {
       />
       <div className="main-content" style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {selectedTable ? (
-            <DataTable tableName={selectedTable} />
+            <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ flex: 1, overflow: 'hidden' }}>
+                    <DataTable tableName={selectedTable} />
+                </div>
+            </div>
         ) : (
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                 <div className="content-header">

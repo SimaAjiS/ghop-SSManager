@@ -919,6 +919,64 @@ def export_device_excel(device_type: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/audit-logs")
+def get_audit_logs(
+    page: int = 1,
+    limit: int = 50,
+    sort_by: Optional[str] = "timestamp",
+    descending: bool = True,
+):
+    """Returns paginated audit logs."""
+    try:
+        engine = get_db_engine()
+
+        from sqlalchemy import MetaData, Table, select, desc, asc, func
+
+        metadata = MetaData()
+        audit_log = Table("AuditLog", metadata, autoload_with=engine)
+
+        stmt = select(audit_log)
+
+        # Apply Sort
+        if sort_by and sort_by in audit_log.columns:
+            col = audit_log.columns[sort_by]
+            if descending:
+                stmt = stmt.order_by(desc(col))
+            else:
+                stmt = stmt.order_by(asc(col))
+        else:
+            # Default sort
+            stmt = stmt.order_by(desc(audit_log.c.timestamp))
+
+        # Count total
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+
+        # Pagination
+        offset = (page - 1) * limit
+        stmt = stmt.limit(limit).offset(offset)
+
+        with engine.connect() as conn:
+            total_records = conn.execute(count_stmt).scalar()
+            result = conn.execute(stmt)
+            data = [dict(row._mapping) for row in result]
+
+        total_pages = (total_records + limit - 1) // limit if limit > 0 else 1
+
+        return {
+            "data": data,
+            "total": total_records,
+            "page": page,
+            "limit": limit,
+            "total_pages": total_pages,
+        }
+
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Table, Database, ArrowLeft, List, Settings, FileSpreadsheet } from 'lucide-react';
+import { Table, Database, ArrowLeft, List, Settings, FileSpreadsheet, ClipboardList } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const Sidebar = ({
@@ -54,6 +54,16 @@ const Sidebar = ({
               </div>
             </li>
           ))}
+          <li
+            className="table-item"
+            onClick={() => navigate('/audit-logs')}
+            style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <ClipboardList size={18} strokeWidth={1.5} />
+              <span>Audit Logs</span>
+            </div>
+          </li>
         </ul>
       )}
 
