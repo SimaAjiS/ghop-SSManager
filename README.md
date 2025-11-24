@@ -69,6 +69,32 @@ SSManager の SS とは SpecSheet の略で製品の性能スペックを記載�
 - **UI コンポーネント**: Lucide React
 - **スタイリング**: Vanilla CSS (Modern & Clean Design)
 
+## プロジェクト構成
+
+### Backend (`backend/`)
+
+- `main.py`: アプリケーションのエントリーポイント。
+- `database.py`: データベース接続設定。
+- `utils.py`: 共通ユーティリティ関数。
+- `routers/`: API ルーター。
+  - `tables.py`: マスタテーブル関連のエンドポイント。
+  - `devices.py`: デバイス詳細・ユーザービュー関連のエンドポイント。
+- `models.py`: SQLAlchemy モデル定義。
+- `schema.py`: Pydantic スキーマ定義。
+
+### Frontend (`frontend/src/`)
+
+- `App.jsx`: ルーティング設定。
+- `pages/`: ページコンポーネント。
+  - `MasterView.jsx`: 管理者向けマスタテーブル閲覧画面。
+  - `UserView.jsx`: ユーザー向けダッシュボード。
+  - `AuditLogs.jsx`: 監査ログ閲覧画面。
+- `components/`: 再利用可能な UI コンポーネント。
+  - `DataTable.jsx`: 高機能データテーブル。
+  - `DetailDrawer.jsx`: 詳細表示ドロワー。
+  - `Sidebar.jsx`: サイドバーナビゲーション。
+  - `ThemeToggle.jsx`: テーマ切り替えボタン。
+
 ## 起動方法
 
 ### GUI (簡単起動)

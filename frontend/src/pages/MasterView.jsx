@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import "../App.css";
-import Sidebar from "../Sidebar";
-import DataTable from "../DataTable";
-import ThemeToggle from "../ThemeToggle";
+import Sidebar from "../components/Sidebar";
+import DataTable from "../components/DataTable";
+import ThemeToggle from "../components/ThemeToggle";
 
 function MasterView() {
   const [tables, setTables] = useState([]);
