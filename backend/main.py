@@ -7,6 +7,17 @@ from .routers import tables, devices
 
 app = FastAPI(title="Master Table Manager API")
 
+
+@app.get("/")
+def root():
+    """Root endpoint - API health check."""
+    return {
+        "message": "Master Table Manager API is running",
+        "docs": "/docs",
+        "api_prefix": "/api",
+    }
+
+
 # Mount static files for chip appearance images
 CHIP_APPEARANCES_DIR = os.path.join(settings.DATA_DIR, "chip_appearances")
 if os.path.exists(CHIP_APPEARANCES_DIR):
@@ -20,6 +31,8 @@ if os.path.exists(CHIP_APPEARANCES_DIR):
 origins = [
     "http://localhost:5173",  # Vite default port
     "http://127.0.0.1:5173",
+    "http://localhost:5174",  # Alternative Vite port
+    "http://127.0.0.1:5174",
 ]
 
 app.add_middleware(

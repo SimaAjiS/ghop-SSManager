@@ -1,15 +1,28 @@
 @echo off
 cd /d "%~dp0"
 
-echo Starting Backend...
-start "Backend Server" cmd /k "uv run uvicorn backend.main:app --reload --port 8000"
+echo ========================================
+echo Starting Backend Server...
+echo ========================================
+start "Backend Server" cmd /k "%~dp0start_backend.bat"
 
-echo Starting Frontend...
-cd frontend
+echo Waiting for backend to start...
+timeout /t 3 /nobreak >nul
 
-if not exist node_modules (
-    echo Installing dependencies (first run only)...
-    call npm install
-)
+echo.
+echo ========================================
+echo Starting Frontend Server...
+echo ========================================
+start "Frontend Server" cmd /k "%~dp0start_frontend.bat"
 
-call npm run dev -- --open
+timeout /t 2 /nobreak >nul
+echo.
+echo ========================================
+echo Both servers are starting:
+echo   - Backend: http://127.0.0.1:8000
+echo   - Frontend: http://localhost:5173
+echo ========================================
+echo.
+echo Check the "Backend Server" and "Frontend Server" windows for status.
+echo This window will close in 5 seconds...
+timeout /t 5 /nobreak >nul
