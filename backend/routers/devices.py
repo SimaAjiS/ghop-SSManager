@@ -370,15 +370,15 @@ def export_device_excel(device_type: str):
                 related_devices = [dict(row) for row in result_devices]
 
         # Load Template
-        # Updated to use the new .xlsm template
+        # Updated to use the new .xlsx template
         template_path = os.path.join(
-            settings.DATA_DIR, "templates", "specsheet_template.xlsm"
+            settings.DATA_DIR, "templates", "specsheet_template.xlsx"
         )
         if not os.path.exists(template_path):
             raise HTTPException(status_code=500, detail="Template file not found")
 
-        # keep_vba=True is required for .xlsm files
-        wb = openpyxl.load_workbook(template_path, keep_vba=True)
+        # keep_vba=True is NOT required for .xlsx files
+        wb = openpyxl.load_workbook(template_path)
         ws = wb.active
         if ws is None or not isinstance(ws, Worksheet):
             raise HTTPException(
@@ -390,17 +390,36 @@ def export_device_excel(device_type: str):
             val = data.get(key)
             return val if val is not None else default
 
+        # Helper to format condition string (ported from frontend)
+        def format_condition(char):
+            parts = []
+            if char.get("bias_vgs"):
+                parts.append(f"VGS={char.get('bias_vgs')}")
+            if char.get("bias_igs"):
+                parts.append(f"IGS={char.get('bias_igs')}")
+            if char.get("bias_vds"):
+                parts.append(f"VDS={char.get('bias_vds')}")
+            if char.get("bias_ids"):
+                parts.append(f"IDS={char.get('bias_ids')}")
+            if char.get("bias_vss"):
+                parts.append(f"VSS={char.get('bias_vss')}")
+            if char.get("bias_iss"):
+                parts.append(f"ISS={char.get('bias_iss')}")
+            if char.get("cond"):
+                parts.append(char.get("cond"))
+            return ", ".join(parts)
+
         # Fill Data based on new template structure
 
         # Header Info
-        ws["K3"] = get_val(device_data, "sheet_no")
-        ws["O3"] = get_val(device_data, "sheet_revision")
+        ws["J5"] = get_val(device_data, "sheet_no")
+        ws["N5"] = get_val(device_data, "sheet_revision")
 
         # Type
         ws["D7"] = get_val(device_data, "sheet_name")
 
         # Chip Specs
-        ws["H8"] = (
+        ws["L8"] = (
             f"{get_val(device_data, 'chip_x_mm')} * {get_val(device_data, 'chip_y_mm')} mm"
         )
         ws["L10"] = (
@@ -409,8 +428,43 @@ def export_device_excel(device_type: str):
         ws["L11"] = (
             f"{get_val(device_data, 'pad_x_source_um')} * {get_val(device_data, 'pad_y_source_um')} um"
         )
-        ws["H12"] = f"{get_val(device_data, 'dicing_line_um')} um"
-        ws["H16"] = f"{get_val(device_data, 'pdpw')}pcs"
+        ws["L12"] = f"{get_val(device_data, 'dicing_line_um')} um"
+        ws["L16"] = f"{get_val(device_data, 'pdpw')}pcs"
+
+        # Chip Appearance Image (C9)
+        from openpyxl.drawing.image import Image
+
+        appearance_file = get_val(device_data, "appearance")
+        image_path = None
+
+        if appearance_file:
+            potential_path = os.path.join(
+                settings.DATA_DIR, "chip_appearances", appearance_file
+            )
+            if os.path.exists(potential_path):
+                image_path = potential_path
+
+        if not image_path:
+            # Use placeholder
+            image_path = os.path.join(
+                settings.DATA_DIR, "chip_appearances", "no_image.png"
+            )
+
+        if os.path.exists(image_path):
+            try:
+                img = Image(image_path)
+                # Resize image to fit reasonably (e.g., max 300px width/height)
+                # Adjust as needed based on cell size
+                max_size = 300
+                if img.width > max_size or img.height > max_size:
+                    ratio = min(max_size / img.width, max_size / img.height)
+                    img.width = int(img.width * ratio)
+                    img.height = int(img.height * ratio)
+
+                # Anchor to C9
+                ws.add_image(img, "C9")
+            except Exception as e:
+                print(f"Failed to add image: {e}")
 
         # Maximum Ratings
         ws["G19"] = get_val(device_data, "vdss_V")
@@ -422,6 +476,7 @@ def export_device_excel(device_type: str):
         available_rows = 10
 
         from openpyxl.styles import Alignment, Border, Side
+        from datetime import date
 
         center_align = Alignment(horizontal="center", vertical="center")
         thin_border = Border(
@@ -431,15 +486,15 @@ def export_device_excel(device_type: str):
             bottom=Side(style="thin"),
         )
 
+        inserted_wafer_rows = 0
         # Insert rows for characteristics
         if elec_data:
             num_items = len(elec_data)
 
             # Only insert if we have more items than available rows
             if num_items > available_rows:
-                ws.insert_rows(
-                    start_row + available_rows, amount=num_items - available_rows
-                )
+                inserted_wafer_rows = num_items - available_rows
+                ws.insert_rows(start_row + available_rows, amount=inserted_wafer_rows)
 
             # Iterate over max(num_items, available_rows) to ensure we fill data AND clear unused rows
             for i in range(max(num_items, available_rows)):
@@ -476,8 +531,9 @@ def export_device_excel(device_type: str):
                     ).alignment = center_align  # Unit (I)
                     ws.cell(row=row, column=9).border = thin_border
 
+                    # Use format_condition helper
                     ws.cell(
-                        row=row, column=10, value=char.get("cond")
+                        row=row, column=10, value=format_condition(char)
                     ).alignment = center_align  # Cond (J)
                     ws.cell(row=row, column=10).border = thin_border
                 else:
@@ -486,21 +542,25 @@ def export_device_excel(device_type: str):
                         ws.cell(row=row, column=col, value="")
                         ws.cell(row=row, column=col).border = thin_border
 
-        # Related Devices (Starts at Row 40 + inserted rows)
-        # Columns: Type(C), Top Metal(F), Wafer Thickness(I), Back Metal(L)
-        # Note: The start row for related devices shifts if we inserted rows
-        base_related_start_row = 40
-        related_start_row = base_related_start_row + max(
-            0, len(elec_data) - available_rows
-        )
+        # ESD (Base D36)
+        # Shifted by inserted_wafer_rows
+        esd_row = 36 + inserted_wafer_rows
+        ws.cell(row=esd_row, column=4, value=get_val(device_data, "esd_display"))
+
+        # Related Devices (Starts at Row 49 + inserted rows)
+        # Columns: Type(F), Top Metal(I), Wafer Thickness(K), Back Metal(M)
+        base_related_start_row = 49
+        related_start_row = base_related_start_row + inserted_wafer_rows
         available_related_rows = 5
 
+        inserted_related_rows = 0
         if related_devices:
             num_related = len(related_devices)
             if num_related > available_related_rows:
+                inserted_related_rows = num_related - available_related_rows
                 ws.insert_rows(
                     related_start_row + available_related_rows,
-                    amount=num_related - available_related_rows,
+                    amount=inserted_related_rows,
                 )
 
             for i in range(max(num_related, available_related_rows)):
@@ -508,38 +568,61 @@ def export_device_excel(device_type: str):
                 if i < num_related:
                     dev = related_devices[i]
                     ws.cell(
-                        row=row, column=3, value=dev.get("type")
-                    ).alignment = center_align  # Type (C)
-                    ws.cell(row=row, column=3).border = thin_border
-
-                    ws.cell(
-                        row=row, column=6, value=dev.get("top_metal_display")
-                    ).alignment = center_align  # Top Metal (F)
+                        row=row, column=6, value=dev.get("type")
+                    ).alignment = center_align  # Type (F)
                     ws.cell(row=row, column=6).border = thin_border
 
                     ws.cell(
-                        row=row, column=9, value=dev.get("wafer_thickness_display")
-                    ).alignment = center_align  # Wafer Thickness (I)
+                        row=row, column=9, value=dev.get("top_metal_display")
+                    ).alignment = center_align  # Top Metal (I)
                     ws.cell(row=row, column=9).border = thin_border
 
                     ws.cell(
-                        row=row, column=12, value=dev.get("back_metal_display")
-                    ).alignment = center_align  # Back Metal (L)
-                    ws.cell(row=row, column=12).border = thin_border
+                        row=row, column=11, value=dev.get("wafer_thickness_display")
+                    ).alignment = center_align  # Wafer Thickness (K)
+                    ws.cell(row=row, column=11).border = thin_border
+
+                    ws.cell(
+                        row=row, column=13, value=dev.get("back_metal_display")
+                    ).alignment = center_align  # Back Metal (M)
+                    ws.cell(row=row, column=13).border = thin_border
                 else:
                     # Clear cells
-                    for col in [3, 6, 9, 12]:
+                    for col in [6, 9, 11, 13]:
                         ws.cell(row=row, column=col, value="")
                         ws.cell(row=row, column=col).border = thin_border
+
+        # G48 (Base G48) - Sheet Name
+        # Shifted by both insertions
+        g48_row = 48 + inserted_wafer_rows + inserted_related_rows
+        ws.cell(row=g48_row, column=7, value=get_val(device_data, "sheet_name"))
+
+        # Update Date (Base M53)
+        # Shifted by both insertions
+        # Note: If base related row changed from 40 to 49, the update date row might also need adjustment relative to that.
+        # Assuming M53 is the absolute position in the template BEFORE any insertions.
+        # If Related Devices starts at 49 and has 5 rows, it ends at 53.
+        # So M53 seems to be overlapping with the last row of Related Devices if it has 5 rows.
+        # Let's assume the user meant M53 is the footer date position in the template.
+        update_date_row = 53 + inserted_wafer_rows + inserted_related_rows
+        ws.cell(row=update_date_row, column=13, value=date.today())
 
         # Save to BytesIO
         output = BytesIO()
         wb.save(output)
         output.seek(0)
 
-        filename = f"{device_type}_SpecSheet.xlsm"
+        # Filename: [sheet_no]_[sheet_name].xlsx
+        s_no = get_val(device_data, "sheet_no", "X")
+        s_name = get_val(device_data, "sheet_name", "X")
+        if not s_no:
+            s_no = "X"
+        if not s_name:
+            s_name = "X"
+
+        filename = f"{s_no}_{s_name}.xlsx"
         headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
-        media_type = "application/vnd.ms-excel.sheet.macroEnabled.12"
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
         return StreamingResponse(output, headers=headers, media_type=media_type)
 
