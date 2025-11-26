@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 from . import settings
-from .routers import tables, devices
+from .routers import tables, devices, audit_logs
 
 app = FastAPI(title="Master Table Manager API")
 
@@ -47,3 +47,4 @@ app.add_middleware(
 # Include Routers
 app.include_router(tables.router, prefix="/api", tags=["tables"])
 app.include_router(devices.router, prefix="/api", tags=["devices"])
+app.include_router(audit_logs.router, prefix="/api", tags=["audit_logs"])
