@@ -6,6 +6,7 @@ import Sidebar from "../components/Sidebar";
 import DetailDrawer from "../components/DetailDrawer";
 import ThemeToggle from "../components/ThemeToggle";
 import { LayoutGrid, ArrowLeft, FileText, Cpu, Zap, Package, Ruler, Layers, MoveVertical, Flag, Shield, Disc } from 'lucide-react'
+import { buildApiUrl } from '../lib/api';
 
 function UserView() {
   const [viewMode, setViewMode] = useState('deviceList') // 'deviceList' or 'masterList'
@@ -21,7 +22,7 @@ function UserView() {
   useEffect(() => {
     const fetchTables = async () => {
       try {
-        const response = await axios.get('http://localhost:8000/api/tables')
+        const response = await axios.get(buildApiUrl('/api/tables'))
         setTables(response.data.tables)
       } catch (err) {
         setError('Failed to load tables.')
@@ -42,7 +43,9 @@ function UserView() {
       setSelectedDevice(null);
       setIsDrawerOpen(true);
 
-      const response = await axios.get(`http://localhost:8000/api/devices/${device['Device Type']}/details`);
+      const deviceType = device['Device Type'];
+      const encodedType = encodeURIComponent(deviceType);
+      const response = await axios.get(buildApiUrl(`/api/devices/${encodedType}/details`));
       setSelectedDevice(response.data);
     } catch (err) {
       console.error("Failed to fetch device details", err);
@@ -111,7 +114,7 @@ function UserView() {
                 <div style={{ flex: 1, overflow: 'hidden' }}>
                   <DataTable
                     tableName="Device Specifications"
-                    customUrl="http://localhost:8000/api/user/devices"
+                    customUrl="/api/user/devices"
                     onRowClick={handleDeviceClick}
                   />
                 </div>

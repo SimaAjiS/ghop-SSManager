@@ -33,6 +33,28 @@ SSManager の SS とは SpecSheet の略で製品の性能スペックを記載�
   - **検索・ソート・ページネーション**: ログデータの効率的な閲覧をサポート
 - **ダークモード**: ライトモード/ダークモードの切り替え対応
 
+## アプリの使い方
+
+1. **Master View（管理者画面）**
+   - サイドバーのマスタ一覧から任意のテーブルを選択すると `DataTable` コンポーネントが表示されます。
+   - テーブル右上の検索ボックス／フィルターボタンでサーバーサイド検索・絞り込みが可能です。
+   - `Download` ボタンで現在の検索条件を反映した Excel/CSV を取得できます。
+   - サイドバー最下部の「Audit Logs」リンクから監査ログページへ遷移できます。
+
+2. **User View（一般ユーザー画面）**
+   - `Device List` タブでは業務でよく参照する結合済みデバイス一覧を表示します。行をクリックすると Detail Drawer が開き詳細を確認できます。
+   - `Master Tables` タブでは必要なマスタのみをカード形式で選び、クリックすると `DataTable` 表示へ切り替わります。
+   - 画面右上のテーマトグルでライト/ダークモードを切り替えられます。
+
+3. **Detail Drawer**
+   - デバイス行をクリックすると SPEC SHEET レイアウトの Drawer が表示されます。
+   - Drawer 左上から印刷 (`Printer`)、Excel エクスポート (`FileSpreadsheet`)、クローズ (`X`) を操作できます。
+   - 「NOTE」領域では同一シート番号の派生デバイス情報を一覧できます。
+
+4. **Audit Logs**
+   - `/audit-logs` ではインポート履歴を `DataTable` 形式で参照でき、検索・フィルタ・エクスポートも利用可能です。
+   - サイドバーの「Back to Master View」から管理者画面へ戻れます。
+
 ## UI デザインと構造
 
 本アプリケーションは、モダンでクリーンなユーザーインターフェースを採用しています。
@@ -77,6 +99,16 @@ SSManager の SS とは SpecSheet の略で製品の性能スペックを記載�
 
 ## プロジェクト構成
 
+```
+ghop-SSManager/
+├── backend/            # FastAPI + SQLAlchemy + Pydantic
+├── frontend/           # Vite + React + Lucide UI
+├── app.py              # Streamlit 実験用スクリプト
+├── run_app.*           # GUI 起動スクリプト (Win/Mac)
+├── README.md / ISSUES.md
+└── pyproject.toml / uv.lock
+```
+
 ### Backend (`backend/`)
 
 - `main.py`: アプリケーションのエントリーポイント。
@@ -100,6 +132,25 @@ SSManager の SS とは SpecSheet の略で製品の性能スペックを記載�
   - `DetailDrawer.jsx`: 詳細表示ドロワー。
   - `Sidebar.jsx`: サイドバーナビゲーション。
   - `ThemeToggle.jsx`: テーマ切り替えボタン。
+
+## 技術的課題・設計上の考慮
+
+1. **データ正規化とバリデーション**
+   - `backend/schema.py` と Pydantic モデルでカラム型・主キー・FK を厳密に定義。
+   - `scripts/import_data.py` では Excel 取り込み時に型変換・NaN 正規化・FK チェックを実施し、警告としてログに残します。
+
+2. **大量データ・パフォーマンス**
+   - すべての一覧 API はサーバーサイドページネーション（`page`/`limit`）とデバウンスされた検索入力に対応し、React 側では 500ms デバウンスで不要な API 呼び出しを抑制しています。
+
+3. **Excel テンプレート出力**
+   - `openpyxl` でテンプレートに直接書き込み、Chip Appearance 画像挿入や COND 文字列の共通フォーマットを採用。
+   - 行挿入や書式崩れを避けるためセルアドレスを定数化して管理しています。
+
+4. **監査性と追跡性**
+   - インポート完了時の行数やエラー件数を `AuditLog` テーブルに記録し、UI から常時参照できます。
+
+5. **今後の課題**
+   - 認証/認可（Issue 4）や API ベースURLの環境変数化（Issue 26）など、運用環境向けのハードニングを順次検討しています。
 
 ## 起動方法
 
@@ -159,6 +210,14 @@ npm run dev
 - `MASTER_EXCEL_FILE`: 入力 Excel ファイルのパス (デフォルト: `backend/data/master_tables_dummy.xlsx`)
 - `DB_FILE`: SQLite データベースファイルのパス
 - `TABLE_ORDER`: テーブルの表示順序
+
+### フロントエンド (`frontend/.env`)
+
+| 変数名 | 役割 | 備考 |
+| --- | --- | --- |
+| `VITE_API_BASE_URL` | API / 静的ファイルのベース URL | 未設定の場合はフロントエンドと同一オリジンを想定し、Vite のプロキシ (`/api`, `/static`) にフォールバックします。ローカルで FastAPI を 8000 番で起動する場合は `http://localhost:8000` を指定してください。 |
+
+> `.env` を作成したら `npm run dev` を再起動してください。
 
 ## 開発ツール
 

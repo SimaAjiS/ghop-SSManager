@@ -34,7 +34,7 @@ const AuditLogs = () => {
           <div style={{ flex: 1, overflow: 'hidden' }}>
             <DataTable
               tableName="Audit Logs"
-              customUrl="http://localhost:8000/api/audit-logs"
+              customUrl="/api/audit-logs"
             />
           </div>
         </div>

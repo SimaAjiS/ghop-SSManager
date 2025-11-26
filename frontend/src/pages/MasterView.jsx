@@ -4,6 +4,7 @@ import "../App.css";
 import Sidebar from "../components/Sidebar";
 import DataTable from "../components/DataTable";
 import ThemeToggle from "../components/ThemeToggle";
+import { buildApiUrl } from "../lib/api";
 
 function MasterView() {
   const [tables, setTables] = useState([]);
@@ -14,7 +15,7 @@ function MasterView() {
   useEffect(() => {
     const fetchTables = async () => {
       try {
-        const response = await axios.get("http://localhost:8000/api/tables");
+        const response = await axios.get(buildApiUrl("/api/tables"));
         setTables(response.data.tables);
         if (response.data.tables.length > 0) {
           setSelectedTable(response.data.tables[0]);
@@ -57,19 +58,19 @@ function MasterView() {
       />
       <div className="main-content" style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {selectedTable ? (
-            <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                <div style={{ flex: 1, overflow: 'hidden' }}>
-                    <DataTable tableName={selectedTable} />
-                </div>
+          <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1, overflow: 'hidden' }}>
+              <DataTable tableName={selectedTable} />
             </div>
+          </div>
         ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                <div className="content-header">
-                    <h2 style={{ margin: 0 }}>Select Table</h2>
-                    <ThemeToggle />
-                </div>
-                <div className="no-data">Select a table to view data</div>
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <div className="content-header">
+              <h2 style={{ margin: 0 }}>Select Table</h2>
+              <ThemeToggle />
             </div>
+            <div className="no-data">Select a table to view data</div>
+          </div>
         )}
       </div>
     </div>
