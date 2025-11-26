@@ -2,16 +2,66 @@
 テンプレートファイルを参考に、ダミーデータを更新するスクリプト
 """
 
-import pandas as pd
 import os
-import sys
-from datetime import datetime, timedelta
 import random
 import re
+import sys
+from datetime import datetime, timedelta
+from typing import Callable, Dict
+
+import pandas as pd
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import settings  # type: ignore
+
+
+SHARED_COLUMN_CONFIG: Dict[str, Dict[str, Callable[[int], str]]] = {
+    "sheet_no": {
+        "generator": lambda idx: f"SS-DMY-{idx:03d}",
+    },
+    "sheet_name": {
+        "generator": lambda idx: f"Dummy Spec Sheet {idx:02d}",
+    },
+    "maskset": {
+        "generator": lambda idx: f"MASK-DMY-{idx:02d}",
+    },
+    "type": {
+        "generator": lambda idx: f"TYPE-DMY-{idx:03d}",
+    },
+    "item": {
+        "generator": lambda idx: f"ITEM-DMY-{idx:03d}",
+    },
+}
+
+
+def build_shared_value_getter():
+    """指定されたカラム名ごとに同じ値を共有するダミー値を生成する"""
+
+    shared_maps: Dict[str, Dict[str, str]] = {name: {} for name in SHARED_COLUMN_CONFIG}
+    shared_counters: Dict[str, int] = {name: 1 for name in SHARED_COLUMN_CONFIG}
+
+    def get_shared_value(column_name: str, original_value):
+        if pd.isna(original_value):
+            return original_value
+
+        original_str = str(original_value).strip()
+        if original_str == "":
+            return original_value
+
+        column_key = column_name.lower()
+        mapping = shared_maps[column_key]
+        if original_str in mapping:
+            return mapping[original_str]
+
+        idx = shared_counters[column_key]
+        shared_counters[column_key] += 1
+        generator = SHARED_COLUMN_CONFIG[column_key]["generator"]
+        new_value = generator(idx)
+        mapping[original_str] = new_value
+        return new_value
+
+    return get_shared_value
 
 
 def anonymize_string(value, prefix_pattern=None):
@@ -144,6 +194,7 @@ def update_dummy_data():
     """テンプレートを参考にダミーデータを更新"""
     template_file = os.path.join(settings.DATA_DIR, "master_tables_template.xlsx")
     dummy_file = os.path.join(settings.DATA_DIR, "master_tables_dummy.xlsx")
+    shared_value_getter = build_shared_value_getter()
 
     if not os.path.exists(template_file):
         print(f"Error: Template file '{template_file}' not found.")
@@ -188,6 +239,12 @@ def update_dummy_data():
                     continue
 
                 col_lower = col.lower()
+
+                if col_lower in SHARED_COLUMN_CONFIG:
+                    dummy_df[col] = dummy_df[col].apply(
+                        lambda x, key=col_lower: shared_value_getter(key, x)
+                    )
+                    continue
 
                 # Booleanカラム（+/-）
                 if col == "+/-" or col == "±":

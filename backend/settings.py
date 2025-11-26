@@ -6,8 +6,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Data Source Configuration
 # The Excel file containing master tables
 DATA_DIR = os.path.join(BASE_DIR, "data")
-# MASTER_EXCEL_FILE = os.path.join(DATA_DIR, "master_tables_dummy.xlsx")
-MASTER_EXCEL_FILE = os.path.join(DATA_DIR, "master_tables_template.xlsx")
+MASTER_EXCEL_FILE = os.path.join(DATA_DIR, "master_tables_dummy.xlsx")
+# MASTER_EXCEL_FILE = os.path.join(DATA_DIR, "master_tables_template.xlsx")
 
 
 # Database Configuration
