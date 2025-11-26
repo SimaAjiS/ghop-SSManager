@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { ArrowUp, ArrowDown, Search, AlertCircle, Filter, Download } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
+import { buildApiUrl } from '../lib/api';
 
 const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent }) => {
   const [data, setData] = useState([]);
@@ -66,7 +67,8 @@ const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent 
       setLoading(true);
       setError(null);
       try {
-        const url = customUrl || `http://localhost:8000/api/tables/${tableName}`;
+        const endpoint = customUrl || `/api/tables/${tableName}`;
+        const url = buildApiUrl(endpoint);
 
         // Build query params
         const params = new URLSearchParams();
@@ -129,13 +131,12 @@ const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent 
 
   const handleExport = () => {
       // Construct export URL
-      let baseUrl = customUrl || `http://localhost:8000/api/tables/${tableName}`;
-      // Append /export if not already there (assuming customUrl follows convention)
-      // If customUrl is /api/user/devices, we want /api/user/devices/export
-      // If baseUrl ends with /, remove it
-      if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
-
-      const exportUrl = `${baseUrl}/export`;
+      let exportEndpoint;
+      if (customUrl) {
+          exportEndpoint = customUrl.endsWith('/export') ? customUrl : `${customUrl.replace(/\/$/, '')}/export`;
+      } else {
+          exportEndpoint = `/api/tables/${tableName}/export`;
+      }
 
       const params = new URLSearchParams();
       if (debouncedSearchTerm) {
@@ -150,7 +151,8 @@ const DataTable = ({ tableName, customUrl, customData, onRowClick, titleContent 
       }
 
       // Trigger download
-      window.open(`${exportUrl}?${params.toString()}`, '_blank');
+      const exportUrl = `${buildApiUrl(exportEndpoint)}?${params.toString()}`;
+      window.open(exportUrl, '_blank');
   };
 
   // Client-side processing for customData ONLY

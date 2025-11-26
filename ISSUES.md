@@ -657,3 +657,88 @@ Issue 11 でエクセルエクスポート機能が実装され、テンプレ�
 - フロントエンドとバックエンドでの CONDITION フォーマットロジックの統一
 - CORS 設定の改善によるファイル名の正確な伝達
 
+## Issue 23: NOTE欄でマスタコードがそのまま表示される
+
+**ステータス**: 完了（2025-11-26）
+
+**概要**
+Detail Drawer の NOTE セクションでは、各デバイスタイプの TOP/BACK METAL や CHIP THICKNESS を表示名で提示する必要があるが、現状は `MT_device` の内部コード（例: `MT_TOP_A1`）がそのまま描画されている。
+
+**背景**
+`backend/routers/devices.py` の関連デバイス取得クエリは `MT_top_metal` / `MT_back_metal` / `MT_wafer_thickness` を JOIN せず、`d.top_metal as top_metal_display` のようにエイリアスを付けているだけのため、フロントエンドが人間可読な `*_display` を受け取れない。
+
+**詳細要件 / 課題**
+
+- 関連デバイス取得時に各マスタを JOIN し、`*_display` カラムをレスポンスへ含める。
+- API スキーマ（`related_devices`）を更新し、`DetailDrawer` 側での表示値が期待どおりになることを確認する。
+- 単体テストまたは API スナップショットで、表示名が返却されていることを保証する。
+
+**対処内容**
+
+- `backend/routers/devices.py` の関連デバイス取得クエリで `MT_top_metal` / `MT_back_metal` / `MT_wafer_thickness` を LEFT JOIN し、`COALESCE(..., d.column)` で表示名を補完。
+- NOTE テーブルに渡る `related_devices` が常に表示名を含むことを確認。
+
+## Issue 24: デバイスExcel出力が10行/5行に固定されている
+
+**ステータス**: 完了（2025-11-26）
+
+**概要**
+`GET /api/devices/{device_type}/export-excel` は WAFER PROBING SPEC を最大 10 行、Related Devices を最大 5 行までしか書き出さず、それ以上のデータはドロップされる。仕様ではデータ件数に応じた動的行挿入が必要。
+
+**背景**
+`backend/routers/devices.py` で `available_rows = 10`、`available_related_rows = 5` と固定し、`insert_rows` を使ったロジックがコメントアウトされたままになっている。
+
+**詳細要件 / 課題**
+
+- `openpyxl` の行挿入を復活させ、件数に応じてテンプレートの該当セクションを拡張する。
+- 既存テンプレートの罫線や参照セルが崩れないよう、行挿入位置と書式を調整する。
+- 行数の多いサンプルデータでの動作確認と回帰テストを行う。
+
+**対処内容**
+
+- `backend/routers/devices.py` で測定項目数をもとに追加行数を計算し、`ws.insert_rows` で挿入するよう修正。
+- Related Devices も同様に動的行数へ対応、後続セル（ESD、Sheet Name、更新日）の行オフセットを計算式化。
+
+## Issue 25: デバイスタイプに空白や記号が含まれるとAPI呼び出しが失敗する
+
+**ステータス**: 完了（2025-11-26）
+
+**概要**
+デバイス一覧から Detail Drawer を開く際の `axios.get('.../devices/${deviceType}/details')` や Excel 出力の `fetch('.../devices/${deviceType}/export-excel')` で URL エンコードを行っていないため、デバイスタイプにスペース・スラッシュなどが含まれると 404/422 が発生する。
+
+**背景**
+`frontend/src/pages/UserView.jsx` の `handleDeviceClick`、`frontend/src/components/DetailDrawer.jsx` の `handleExport` が `encodeURIComponent` を使っていない。
+
+**詳細要件 / 課題**
+
+- すべてのパスパラメータで `encodeURIComponent` を適用し、不正な URL にならないようにする。
+- バックエンド側でもバリデーション/ロギングを追加し、問題が検知しやすいようにする。
+- スペースや `+` を含むタイプ名での E2E テストを追加する。
+
+**対処内容**
+
+- `frontend/src/pages/UserView.jsx` と `frontend/src/components/DetailDrawer.jsx` で `encodeURIComponent` を適用したリクエスト URL を生成。
+- API ベース URL ヘルパーを導入し、どの環境でも同じ組み立てロジックを使用するよう統一。
+
+## Issue 26: フロントエンドのAPIベースURLがハードコードされている
+
+**ステータス**: 完了（2025-11-26）
+
+**概要**
+複数コンポーネントで `http://localhost:8000` を直書きしており、ポート変更や本番デプロイ時にビルドし直さないと動かない。
+
+**背景**
+`DataTable.jsx`、`MasterView.jsx`、`UserView.jsx`、`DetailDrawer.jsx` などで API ベースURLを直接記述し、Vite の環境変数やプロキシ設定を利用していない。
+
+**詳細要件 / 課題**
+
+- `.env`（例: `VITE_API_BASE_URL`）を導入し、API クライアントのベースURLを一元管理する。
+- Vite の `server.proxy` を設定して開発環境では相対パスで呼び出せるようにする。
+- README に環境変数設定と、ローカル/本番での URL 指定方法を追記する。
+
+**対処内容**
+
+- `frontend/src/lib/api.js` を追加し、`VITE_API_BASE_URL` に基づく URL 生成ヘルパーを全コンポーネントで使用。
+- `vite.config.js` に `/api` と `/static` のプロキシを定義し、環境変数で転送先を切り替え可能にした。
+- README の「設定」セクションへ `VITE_API_BASE_URL` の説明と運用ガイドを追記。
+

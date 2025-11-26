@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, Printer, FileSpreadsheet } from 'lucide-react';
+import { buildApiUrl } from '../lib/api';
 
 const DetailDrawer = ({ isOpen, onClose, title, data }) => {
   if (!isOpen) return null;
@@ -18,7 +19,8 @@ const DetailDrawer = ({ isOpen, onClose, title, data }) => {
 
     try {
         const deviceType = data.device.type;
-        const response = await fetch(`http://localhost:8000/api/devices/${deviceType}/export-excel`);
+        const encodedType = encodeURIComponent(deviceType);
+        const response = await fetch(buildApiUrl(`/api/devices/${encodedType}/export-excel`));
 
         if (!response.ok) {
             throw new Error('Export failed');
@@ -143,7 +145,7 @@ const DetailDrawer = ({ isOpen, onClose, title, data }) => {
                             {device?.appearance ? (
                                 <>
                                     <img
-                                        src={`http://localhost:8000/static/chip_appearances/${device.appearance}`}
+                                        src={buildApiUrl(`/static/chip_appearances/${device.appearance}`)}
                                         alt="Chip Appearance"
                                         style={{ maxWidth: '100%', maxHeight: '200px', objectFit: 'contain' }}
                                         onError={(e) => {

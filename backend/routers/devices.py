@@ -272,10 +272,16 @@ def get_device_details(device_type: str):
                 query_related_devices = text("""
                     SELECT
                         d.type,
-                        d.top_metal as top_metal_display,
-                        d.wafer_thickness as wafer_thickness_display,
-                        d.back_metal as back_metal_display
+                        COALESCE(tm.top_metal_display, d.top_metal) AS top_metal_display,
+                        COALESCE(wt.wafer_thickness_display, d.wafer_thickness) AS wafer_thickness_display,
+                        COALESCE(bm.back_metal_display, d.back_metal) AS back_metal_display
                     FROM MT_device d
+                    LEFT JOIN MT_top_metal tm
+                        ON d.top_metal = tm.top_metal
+                    LEFT JOIN MT_back_metal bm
+                        ON d.back_metal = bm.back_metal
+                    LEFT JOIN MT_wafer_thickness wt
+                        ON CAST(d.wafer_thickness AS TEXT) = CAST(wt.id AS TEXT)
                     WHERE d.sheet_no = :sheet_no
                     ORDER BY d.type ASC
                 """)
@@ -494,7 +500,11 @@ def export_device_excel(device_type: str):
         # Wafer Probing Spec (Starts at Row 25)
         # Columns: No(C), Item(D), Min(F), Typ(G), Max(H), Unit(I), Cond(J)
         start_row = 25
-        available_rows = 10
+        base_available_rows = 10
+        num_items = len(elec_data)
+        extra_probe_rows = max(0, num_items - base_available_rows)
+        if extra_probe_rows:
+            ws.insert_rows(start_row + base_available_rows, extra_probe_rows)
 
         from openpyxl.styles import Alignment
         from datetime import date
@@ -502,97 +512,78 @@ def export_device_excel(device_type: str):
         center_align = Alignment(horizontal="center", vertical="center")
         left_align = Alignment(horizontal="left", vertical="center")
 
-        # Insert rows for characteristics
-        if elec_data:
-            num_items = len(elec_data)
+        total_probe_rows = max(base_available_rows, num_items)
+        for i in range(total_probe_rows):
+            row = start_row + i
+            if i < num_items:
+                char = elec_data[i]
+                ws.cell(row=row, column=3, value=i + 1).alignment = center_align
+                ws.cell(
+                    row=row, column=4, value=char.get("item")
+                ).alignment = left_align
+                ws.cell(
+                    row=row, column=6, value=char.get("min")
+                ).alignment = center_align
+                ws.cell(
+                    row=row, column=7, value=char.get("typ")
+                ).alignment = center_align
+                ws.cell(
+                    row=row, column=8, value=char.get("max")
+                ).alignment = center_align
+                ws.cell(
+                    row=row, column=9, value=char.get("unit")
+                ).alignment = center_align
+                ws.cell(
+                    row=row, column=10, value=format_condition(char)
+                ).alignment = left_align
+            else:
+                for col in [3, 4, 6, 7, 8, 9, 10]:
+                    ws.cell(row=row, column=col, value="")
 
-            # Iterate over available_rows to ensure we fill data AND clear unused rows
-            # We do NOT insert rows, so we are limited to available_rows
-            for i in range(available_rows):
-                row = start_row + i
-                if i < num_items:
-                    char = elec_data[i]
-                    ws.cell(
-                        row=row, column=3, value=i + 1
-                    ).alignment = center_align  # No (C)
+        # Tracking of row shifts for subsequent sections
+        esd_base_row = 36
+        related_base_row = 49
+        sheet_name_base_row = 48
+        update_date_base_row = 61
 
-                    ws.cell(
-                        row=row, column=4, value=char.get("item")
-                    ).alignment = left_align  # Item (D) - Left Align
-
-                    ws.cell(
-                        row=row, column=6, value=char.get("min")
-                    ).alignment = center_align  # Min (F)
-
-                    ws.cell(
-                        row=row, column=7, value=char.get("typ")
-                    ).alignment = center_align  # Typ (G)
-
-                    ws.cell(
-                        row=row, column=8, value=char.get("max")
-                    ).alignment = center_align  # Max (H)
-
-                    ws.cell(
-                        row=row, column=9, value=char.get("unit")
-                    ).alignment = center_align  # Unit (I)
-
-                    # Use format_condition helper
-                    ws.cell(
-                        row=row, column=10, value=format_condition(char)
-                    ).alignment = left_align  # Cond (J) - Left Align
-                else:
-                    # Clear cells if no data
-                    for col in [3, 4, 6, 7, 8, 9, 10]:
-                        ws.cell(row=row, column=col, value="")
-
-        # ESD (Base D36)
-        # Fixed row 36 as requested
-        esd_row = 36
+        # ESD row should shift only by probe insertions
+        esd_row = esd_base_row + extra_probe_rows
         ws.cell(row=esd_row, column=4, value=get_val(device_data, "esd_display"))
 
         # Related Devices (Starts at Row 49)
         # Columns: Type(F), Top Metal(I), Wafer Thickness(K), Back Metal(M)
-        base_related_start_row = 49
-        related_start_row = base_related_start_row
-        available_related_rows = 5
+        related_start_row = related_base_row + extra_probe_rows
+        base_related_rows = 5
+        num_related = len(related_devices)
+        extra_related_rows = max(0, num_related - base_related_rows)
+        if extra_related_rows:
+            ws.insert_rows(related_start_row + base_related_rows, extra_related_rows)
 
-        if related_devices:
-            num_related = len(related_devices)
-
-            # Iterate over available_related_rows
-            # We do NOT insert rows, so we are limited to available_related_rows
-            for i in range(available_related_rows):
-                row = related_start_row + i
-                if i < num_related:
-                    dev = related_devices[i]
-                    ws.cell(
-                        row=row, column=6, value=dev.get("type")
-                    ).alignment = left_align  # Type (F) - Left Align
-
-                    ws.cell(
-                        row=row, column=9, value=dev.get("top_metal_display")
-                    ).alignment = left_align  # Top Metal (I) - Left Align
-
-                    ws.cell(
-                        row=row, column=11, value=dev.get("wafer_thickness_display")
-                    ).alignment = left_align  # Wafer Thickness (K) - Left Align
-
-                    ws.cell(
-                        row=row, column=13, value=dev.get("back_metal_display")
-                    ).alignment = left_align  # Back Metal (M) - Left Align
-                else:
-                    # Clear cells
-                    for col in [6, 9, 11, 13]:
-                        ws.cell(row=row, column=col, value="")
+        total_related_rows = max(base_related_rows, num_related)
+        for i in range(total_related_rows):
+            row = related_start_row + i
+            if i < num_related:
+                dev = related_devices[i]
+                ws.cell(row=row, column=6, value=dev.get("type")).alignment = left_align
+                ws.cell(
+                    row=row, column=9, value=dev.get("top_metal_display")
+                ).alignment = left_align
+                ws.cell(
+                    row=row, column=11, value=dev.get("wafer_thickness_display")
+                ).alignment = left_align
+                ws.cell(
+                    row=row, column=13, value=dev.get("back_metal_display")
+                ).alignment = left_align
+            else:
+                for col in [6, 9, 11, 13]:
+                    ws.cell(row=row, column=col, value="")
 
         # G48 (Base G48) - Sheet Name
-        # Fixed row 48 as requested
-        g48_row = 48
+        g48_row = sheet_name_base_row + extra_probe_rows
         ws.cell(row=g48_row, column=7, value=get_val(device_data, "sheet_name"))
 
-        # Update Date (Base M61)
-        # Fixed row 61 as requested
-        update_date_row = 61
+        # Update Date (Base M61) shifts with both probe & related insertions
+        update_date_row = update_date_base_row + extra_probe_rows + extra_related_rows
         ws.cell(
             row=update_date_row,
             column=13,
