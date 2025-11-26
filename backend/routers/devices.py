@@ -453,16 +453,37 @@ def export_device_excel(device_type: str):
         if os.path.exists(image_path):
             try:
                 img = Image(image_path)
-                # Resize image to fit reasonably (e.g., max 300px width/height)
-                # Adjust as needed based on cell size
-                max_size = 300
-                if img.width > max_size or img.height > max_size:
-                    ratio = min(max_size / img.width, max_size / img.height)
+                # Resize image to fit 5cm (approx 189 pixels at 96 DPI)
+                # 1 cm = 37.795 px
+                target_size_px = 189
+
+                # Resize keeping aspect ratio
+                if img.width > 0 and img.height > 0:
+                    ratio = min(target_size_px / img.width, target_size_px / img.height)
                     img.width = int(img.width * ratio)
                     img.height = int(img.height * ratio)
 
-                # Anchor to C9
-                ws.add_image(img, "C9")
+                # Anchor to C9 with offset
+                # Import necessary classes for advanced anchoring
+                from openpyxl.drawing.spreadsheet_drawing import (
+                    OneCellAnchor,
+                    AnchorMarker,
+                )
+                from openpyxl.drawing.xdr import XDRPositiveSize2D
+                from openpyxl.utils.units import pixels_to_EMU
+
+                # C9 is col=2, row=8 (0-indexed)
+                # Offset by 10 pixels vertically to avoid overlap with top border
+                row_offset_emu = pixels_to_EMU(10)
+                marker = AnchorMarker(col=2, colOff=0, row=8, rowOff=row_offset_emu)
+
+                # Define size in EMUs
+                size = XDRPositiveSize2D(
+                    pixels_to_EMU(img.width), pixels_to_EMU(img.height)
+                )
+
+                img.anchor = OneCellAnchor(_from=marker, ext=size)
+                ws.add_image(img)
             except Exception as e:
                 print(f"Failed to add image: {e}")
 
@@ -475,137 +496,108 @@ def export_device_excel(device_type: str):
         start_row = 25
         available_rows = 10
 
-        from openpyxl.styles import Alignment, Border, Side
+        from openpyxl.styles import Alignment
         from datetime import date
 
         center_align = Alignment(horizontal="center", vertical="center")
-        thin_border = Border(
-            left=Side(style="thin"),
-            right=Side(style="thin"),
-            top=Side(style="thin"),
-            bottom=Side(style="thin"),
-        )
+        left_align = Alignment(horizontal="left", vertical="center")
 
-        inserted_wafer_rows = 0
         # Insert rows for characteristics
         if elec_data:
             num_items = len(elec_data)
 
-            # Only insert if we have more items than available rows
-            if num_items > available_rows:
-                inserted_wafer_rows = num_items - available_rows
-                ws.insert_rows(start_row + available_rows, amount=inserted_wafer_rows)
-
-            # Iterate over max(num_items, available_rows) to ensure we fill data AND clear unused rows
-            for i in range(max(num_items, available_rows)):
+            # Iterate over available_rows to ensure we fill data AND clear unused rows
+            # We do NOT insert rows, so we are limited to available_rows
+            for i in range(available_rows):
                 row = start_row + i
                 if i < num_items:
                     char = elec_data[i]
                     ws.cell(
                         row=row, column=3, value=i + 1
                     ).alignment = center_align  # No (C)
-                    ws.cell(row=row, column=3).border = thin_border
 
                     ws.cell(
                         row=row, column=4, value=char.get("item")
-                    ).alignment = center_align  # Item (D)
-                    ws.cell(row=row, column=4).border = thin_border
+                    ).alignment = left_align  # Item (D) - Left Align
 
                     ws.cell(
                         row=row, column=6, value=char.get("min")
                     ).alignment = center_align  # Min (F)
-                    ws.cell(row=row, column=6).border = thin_border
 
                     ws.cell(
                         row=row, column=7, value=char.get("typ")
                     ).alignment = center_align  # Typ (G)
-                    ws.cell(row=row, column=7).border = thin_border
 
                     ws.cell(
                         row=row, column=8, value=char.get("max")
                     ).alignment = center_align  # Max (H)
-                    ws.cell(row=row, column=8).border = thin_border
 
                     ws.cell(
                         row=row, column=9, value=char.get("unit")
                     ).alignment = center_align  # Unit (I)
-                    ws.cell(row=row, column=9).border = thin_border
 
                     # Use format_condition helper
                     ws.cell(
                         row=row, column=10, value=format_condition(char)
-                    ).alignment = center_align  # Cond (J)
-                    ws.cell(row=row, column=10).border = thin_border
+                    ).alignment = left_align  # Cond (J) - Left Align
                 else:
                     # Clear cells if no data
                     for col in [3, 4, 6, 7, 8, 9, 10]:
                         ws.cell(row=row, column=col, value="")
-                        ws.cell(row=row, column=col).border = thin_border
 
         # ESD (Base D36)
-        # Shifted by inserted_wafer_rows
-        esd_row = 36 + inserted_wafer_rows
+        # Fixed row 36 as requested
+        esd_row = 36
         ws.cell(row=esd_row, column=4, value=get_val(device_data, "esd_display"))
 
-        # Related Devices (Starts at Row 49 + inserted rows)
+        # Related Devices (Starts at Row 49)
         # Columns: Type(F), Top Metal(I), Wafer Thickness(K), Back Metal(M)
         base_related_start_row = 49
-        related_start_row = base_related_start_row + inserted_wafer_rows
+        related_start_row = base_related_start_row
         available_related_rows = 5
 
-        inserted_related_rows = 0
         if related_devices:
             num_related = len(related_devices)
-            if num_related > available_related_rows:
-                inserted_related_rows = num_related - available_related_rows
-                ws.insert_rows(
-                    related_start_row + available_related_rows,
-                    amount=inserted_related_rows,
-                )
 
-            for i in range(max(num_related, available_related_rows)):
+            # Iterate over available_related_rows
+            # We do NOT insert rows, so we are limited to available_related_rows
+            for i in range(available_related_rows):
                 row = related_start_row + i
                 if i < num_related:
                     dev = related_devices[i]
                     ws.cell(
                         row=row, column=6, value=dev.get("type")
-                    ).alignment = center_align  # Type (F)
-                    ws.cell(row=row, column=6).border = thin_border
+                    ).alignment = left_align  # Type (F) - Left Align
 
                     ws.cell(
                         row=row, column=9, value=dev.get("top_metal_display")
-                    ).alignment = center_align  # Top Metal (I)
-                    ws.cell(row=row, column=9).border = thin_border
+                    ).alignment = left_align  # Top Metal (I) - Left Align
 
                     ws.cell(
                         row=row, column=11, value=dev.get("wafer_thickness_display")
-                    ).alignment = center_align  # Wafer Thickness (K)
-                    ws.cell(row=row, column=11).border = thin_border
+                    ).alignment = left_align  # Wafer Thickness (K) - Left Align
 
                     ws.cell(
                         row=row, column=13, value=dev.get("back_metal_display")
-                    ).alignment = center_align  # Back Metal (M)
-                    ws.cell(row=row, column=13).border = thin_border
+                    ).alignment = left_align  # Back Metal (M) - Left Align
                 else:
                     # Clear cells
                     for col in [6, 9, 11, 13]:
                         ws.cell(row=row, column=col, value="")
-                        ws.cell(row=row, column=col).border = thin_border
 
         # G48 (Base G48) - Sheet Name
-        # Shifted by both insertions
-        g48_row = 48 + inserted_wafer_rows + inserted_related_rows
+        # Fixed row 48 as requested
+        g48_row = 48
         ws.cell(row=g48_row, column=7, value=get_val(device_data, "sheet_name"))
 
-        # Update Date (Base M53)
-        # Shifted by both insertions
-        # Note: If base related row changed from 40 to 49, the update date row might also need adjustment relative to that.
-        # Assuming M53 is the absolute position in the template BEFORE any insertions.
-        # If Related Devices starts at 49 and has 5 rows, it ends at 53.
-        # So M53 seems to be overlapping with the last row of Related Devices if it has 5 rows.
-        # Let's assume the user meant M53 is the footer date position in the template.
-        update_date_row = 53 + inserted_wafer_rows + inserted_related_rows
-        ws.cell(row=update_date_row, column=13, value=date.today())
+        # Update Date (Base M61)
+        # Fixed row 61 as requested
+        update_date_row = 61
+        ws.cell(
+            row=update_date_row,
+            column=13,
+            value=f"'{date.today().strftime('%Y/%m/%d')}",
+        ).alignment = left_align
 
         # Save to BytesIO
         output = BytesIO()
