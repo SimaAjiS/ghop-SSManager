@@ -4,6 +4,7 @@ import "../App.css";
 import Sidebar from "../components/Sidebar";
 import DataTable from "../components/DataTable";
 import ThemeToggle from "../components/ThemeToggle";
+import DetailDrawer from "../components/DetailDrawer";
 import { buildApiUrl } from "../lib/api";
 
 function MasterView() {
@@ -11,6 +12,12 @@ function MasterView() {
   const [selectedTable, setSelectedTable] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerLoading, setDrawerLoading] = useState(false);
+  const [drawerError, setDrawerError] = useState(null);
+  const [drawerData, setDrawerData] = useState(null);
+  const [drawerDirty, setDrawerDirty] = useState(false);
+  const [tableRefreshSignal, setTableRefreshSignal] = useState(0);
 
   useEffect(() => {
     const fetchTables = async () => {
@@ -32,6 +39,70 @@ function MasterView() {
 
     fetchTables();
   }, []);
+
+  const isDeviceTable = selectedTable === "MT_device";
+
+  const handleDeviceRowClick = async (row) => {
+    if (!isDeviceTable || !row) return;
+    const deviceType = row.type || row["Device Type"];
+    if (!deviceType) return;
+
+    setDrawerOpen(true);
+    setDrawerData(null);
+    setDrawerDirty(false);
+    setDrawerLoading(true);
+    setDrawerError(null);
+    try {
+      const encodedType = encodeURIComponent(deviceType);
+      const response = await axios.get(
+        buildApiUrl(`/api/devices/${encodedType}/details`)
+      );
+      setDrawerData(response.data);
+    } catch (err) {
+      console.error(err);
+      setDrawerError(
+        err.response?.data?.detail || "Failed to load device details."
+      );
+    } finally {
+      setDrawerLoading(false);
+    }
+  };
+
+  const handleDrawerClose = () => {
+    if (
+      drawerDirty &&
+      !window.confirm("保存されていない変更があります。閉じますか？")
+    ) {
+      return;
+    }
+    setDrawerOpen(false);
+    setDrawerData(null);
+    setDrawerDirty(false);
+    setDrawerError(null);
+  };
+
+  const handleDrawerSave = async (payload) => {
+    if (!drawerData?.device?.type) return;
+    const encodedType = encodeURIComponent(drawerData.device.type);
+    setDrawerLoading(true);
+    setDrawerError(null);
+    try {
+      const response = await axios.patch(
+        buildApiUrl(`/api/devices/${encodedType}`),
+        payload
+      );
+      setDrawerData(response.data);
+      setDrawerDirty(false);
+      setTableRefreshSignal((prev) => prev + 1);
+      return response.data;
+    } catch (err) {
+      const detail = err.response?.data?.detail || err.message;
+      setDrawerError(detail);
+      throw err;
+    } finally {
+      setDrawerLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -60,7 +131,12 @@ function MasterView() {
         {selectedTable ? (
           <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             <div style={{ flex: 1, overflow: 'hidden' }}>
-              <DataTable tableName={selectedTable} />
+              <DataTable
+                tableName={selectedTable}
+                enableEditing
+                refreshSignal={tableRefreshSignal}
+                onRowClick={isDeviceTable ? handleDeviceRowClick : undefined}
+              />
             </div>
           </div>
         ) : (
@@ -73,6 +149,18 @@ function MasterView() {
           </div>
         )}
       </div>
+
+      <DetailDrawer
+        isOpen={drawerOpen}
+        onClose={handleDrawerClose}
+        title={drawerData?.device?.sheet_name || drawerData?.device?.type}
+        data={drawerLoading ? null : drawerData}
+        editable={isDeviceTable}
+        onSave={handleDrawerSave}
+        onDirtyChange={setDrawerDirty}
+        isLoading={drawerLoading}
+        errorMessage={drawerError}
+      />
     </div>
   );
 }

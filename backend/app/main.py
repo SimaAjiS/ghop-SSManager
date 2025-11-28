@@ -2,8 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
-from . import settings
-from .routers import tables, devices, audit_logs
+from .core.config import settings
+from .api.v1.routers import tables, devices, audit_logs
 
 app = FastAPI(title="Master Table Manager API")
 
@@ -19,7 +19,7 @@ def root():
 
 
 # Mount static files for chip appearance images
-CHIP_APPEARANCES_DIR = os.path.join(settings.DATA_DIR, "chip_appearances")
+CHIP_APPEARANCES_DIR = os.path.join(str(settings.DATA_DIR), "chip_appearances")
 if os.path.exists(CHIP_APPEARANCES_DIR):
     app.mount(
         "/static/chip_appearances",

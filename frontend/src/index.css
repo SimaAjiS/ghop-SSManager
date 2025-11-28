@@ -34,6 +34,8 @@
 
   /* Table Styles */
   --table-row-hover: #f1f5f9; /* Slate 50 */
+  --warning-light: rgba(251, 191, 36, 0.25);
+  --success-light: rgba(34, 197, 94, 0.2);
 }
 
 [data-theme="dark"] {
@@ -272,6 +274,38 @@ tr:hover td {
   background-color: var(--table-row-hover);
 }
 
+.cell-dirty {
+  background-color: var(--warning-light);
+}
+
+.cell-highlight {
+  background-color: var(--success-light);
+}
+
+.cell-input {
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.9rem;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+
+.table-action-cell {
+  white-space: nowrap;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 /* Utilities */
 .loading,
 .error,
@@ -393,6 +427,34 @@ tr:hover td {
   flex: 1;
   overflow-y: auto;
   padding: 1.5rem;
+}
+
+.drawer-input {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+}
+
+.drawer-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .detail-grid {

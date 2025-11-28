@@ -1,4 +1,5 @@
-from sqlalchemy import cast, String, and_
+from sqlalchemy import cast, String, and_, MetaData, Table
+from datetime import datetime
 
 
 def apply_filters(stmt, filters_dict, column_map):
@@ -58,3 +59,20 @@ def apply_filters(stmt, filters_dict, column_map):
         stmt = stmt.where(and_(*conditions))
 
     return stmt
+
+
+def log_audit_event(conn, action: str, target: str, details: str, user: str = "admin"):
+    """
+    Inserts a new row into the AuditLog table to keep historical changes.
+    """
+    metadata = MetaData()
+    audit_table = Table("AuditLog", metadata, autoload_with=conn)
+    conn.execute(
+        audit_table.insert().values(
+            timestamp=datetime.utcnow().isoformat(),
+            user=user,
+            action=action,
+            target=target,
+            details=details,
+        )
+    )

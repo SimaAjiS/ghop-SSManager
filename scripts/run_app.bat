@@ -4,7 +4,7 @@ cd /d "%~dp0"
 echo ========================================
 echo Starting Backend Server...
 echo ========================================
-start "Backend Server" cmd /k "%~dp0start_backend.bat"
+start "Backend Server" cmd /k "%~dp0\start_backend.bat"
 
 echo Waiting for backend to start...
 timeout /t 3 /nobreak >nul
@@ -13,7 +13,7 @@ echo.
 echo ========================================
 echo Starting Frontend Server...
 echo ========================================
-start "Frontend Server" cmd /k "%~dp0start_frontend.bat"
+start "Frontend Server" cmd /k "%~dp0\start_frontend.bat"
 
 timeout /t 2 /nobreak >nul
 echo.

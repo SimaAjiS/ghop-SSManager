@@ -6,11 +6,14 @@ import sys
 from datetime import datetime
 from pydantic import ValidationError
 
-# Add parent directory to path to import settings
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import settings  # type: ignore
-from schema import metadata  # type: ignore
-from models import (  # type: ignore
+# Add backend directory to path to import modules
+backend_dir = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
+sys.path.insert(0, backend_dir)
+from app.core.config import settings  # type: ignore  # noqa: E402
+from app.schema import metadata  # type: ignore  # noqa: E402
+from app.models import (  # type: ignore  # noqa: E402
     MT_BackMetal,
     MT_Barrier,
     MT_Device,
@@ -29,15 +32,16 @@ from models import (  # type: ignore
 
 def import_data():
     """Imports data from Excel to SQLite using strict schema and Pydantic validation."""
-    if not os.path.exists(settings.MASTER_EXCEL_FILE):
-        print(f"Error: Input file '{settings.MASTER_EXCEL_FILE}' not found.")
+    master_file = settings.resolved_master_excel_file
+    if not os.path.exists(str(master_file)):
+        print(f"Error: Input file '{master_file}' not found.")
         sys.exit(1)
 
-    print(f"Reading data from {settings.MASTER_EXCEL_FILE}...")
+    print(f"Reading data from {master_file}...")
 
     try:
         # Read all sheets
-        xls = pd.ExcelFile(settings.MASTER_EXCEL_FILE)
+        xls = pd.ExcelFile(str(master_file))
         sheet_names = xls.sheet_names
         print(f"Found sheets: {sheet_names}")
 

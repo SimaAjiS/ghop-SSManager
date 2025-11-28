@@ -1,18 +1,71 @@
-from fastapi import APIRouter, HTTPException
-from typing import Optional
+from fastapi import APIRouter, HTTPException, status
+from typing import Optional, List, Dict, Any
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, or_, asc, desc, func, cast, String, MetaData, Table, text
+from sqlalchemy import (
+    select,
+    or_,
+    asc,
+    desc,
+    func,
+    cast,
+    String,
+    MetaData,
+    Table,
+    text,
+)
 import pandas as pd
 import json
 import os
+import re
 import openpyxl
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from openpyxl.worksheet.worksheet import Worksheet
 from io import BytesIO
-from .. import settings
-from ..database import get_db_engine
-from ..utils import apply_filters
+from datetime import datetime
+from ....core.config import settings
+from ....core.database import get_db_engine
+from ....core.utils import apply_filters, log_audit_event
+from pydantic import BaseModel, Field
+
+MAX_RELATED_NOTE_ROWS = 12
 
 router = APIRouter()
+
+
+class CharacteristicPayload(BaseModel):
+    item: Optional[str] = None
+    plus_minus: Optional[bool] = Field(default=None, alias="+/-")
+    min: Optional[float] = None
+    typ: Optional[float] = None
+    max: Optional[float] = None
+    unit: Optional[str] = None
+    bias_vgs: Optional[str] = None
+    bias_igs: Optional[str] = None
+    bias_vds: Optional[str] = None
+    bias_ids: Optional[str] = None
+    bias_vss: Optional[str] = None
+    bias_iss: Optional[str] = None
+    cond: Optional[str] = None
+
+
+class DeviceUpdatePayload(BaseModel):
+    device: Optional[Dict[str, Any]] = Field(
+        default=None, description="Columns belonging to MT_device"
+    )
+    spec_sheet: Optional[Dict[str, Any]] = Field(
+        default=None, description="Columns belonging to MT_spec_sheet"
+    )
+    characteristics: Optional[List[CharacteristicPayload]] = Field(
+        default=None,
+        description="Complete list of MT_elec_characteristic rows. Empty list clears existing rows.",
+    )
+
+
+def _filter_columns(values: Optional[Dict[str, Any]], table: Table) -> Dict[str, Any]:
+    if not values:
+        return {}
+    table_columns = {col.name for col in table.columns}
+    return {k: v for k, v in values.items() if k in table_columns}
 
 
 @router.get("/user/devices")
@@ -111,6 +164,101 @@ def get_user_devices(
         import traceback
 
         traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/devices/{device_type}")
+def update_device(device_type: str, payload: DeviceUpdatePayload):
+    """Updates MT_device, MT_spec_sheet, and electrical characteristics for the given device."""
+    try:
+        engine = get_db_engine()
+        metadata = MetaData()
+        mt_device = Table("MT_device", metadata, autoload_with=engine)
+        mt_spec_sheet = Table("MT_spec_sheet", metadata, autoload_with=engine)
+        mt_characteristic = Table(
+            "MT_elec_characteristic", metadata, autoload_with=engine
+        )
+
+        today = datetime.utcnow().date()
+
+        with engine.begin() as conn:
+            device_row = (
+                conn.execute(select(mt_device).where(mt_device.c.type == device_type))
+                .mappings()
+                .first()
+            )
+            if not device_row:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Device '{device_type}' not found",
+                )
+
+            sheet_no = device_row.get("sheet_no")
+            device_changes = _filter_columns(payload.device, mt_device)
+            if "type" in device_changes:
+                device_changes.pop("type")
+            if device_changes:
+                if "更新日" in mt_device.columns and "更新日" not in device_changes:
+                    device_changes["更新日"] = today
+
+                conn.execute(
+                    mt_device.update()
+                    .where(mt_device.c.type == device_type)
+                    .values(**device_changes)
+                )
+
+            spec_changes = _filter_columns(payload.spec_sheet, mt_spec_sheet)
+            if spec_changes:
+                spec_changes.pop("sheet_no", None)
+                if "更新日" in mt_spec_sheet.columns and "更新日" not in spec_changes:
+                    spec_changes["更新日"] = today
+
+                conn.execute(
+                    mt_spec_sheet.update()
+                    .where(mt_spec_sheet.c.sheet_no == sheet_no)
+                    .values(**spec_changes)
+                )
+
+            if payload.characteristics is not None:
+                conn.execute(
+                    mt_characteristic.delete().where(
+                        mt_characteristic.c.sheet_no == sheet_no
+                    )
+                )
+                rows_to_insert = []
+                for char in payload.characteristics:
+                    record = _filter_columns(
+                        char.dict(by_alias=True), mt_characteristic
+                    )
+                    record["sheet_no"] = sheet_no
+                    if "更新日" in mt_characteristic.columns and "更新日" not in record:
+                        record["更新日"] = today
+                    rows_to_insert.append(record)
+
+                if rows_to_insert:
+                    conn.execute(mt_characteristic.insert(), rows_to_insert)
+
+            log_payload = {
+                "device_type": device_type,
+                "device_changes": device_changes,
+                "spec_changes": spec_changes,
+                "characteristics_count": None
+                if payload.characteristics is None
+                else len(payload.characteristics),
+            }
+            log_audit_event(
+                conn,
+                action="update",
+                target=f"device:{device_type}",
+                details=json.dumps(log_payload, ensure_ascii=False, default=str),
+            )
+
+        # Return the refreshed data for the drawer/editor
+        return get_device_details(device_type)
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -291,6 +439,16 @@ def get_device_details(device_type: str):
                     .all()
                 )
                 related_devices = [dict(row) for row in result_devices]
+                if len(related_devices) > MAX_RELATED_NOTE_ROWS:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"NOTE欄に出力できる関連機種は最大{MAX_RELATED_NOTE_ROWS}件です。",
+                    )
+                if len(related_devices) > MAX_RELATED_NOTE_ROWS:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"NOTE欄に出力できる関連機種は最大{MAX_RELATED_NOTE_ROWS}件です。",
+                    )
 
         return {
             "device": device_data,
@@ -378,7 +536,7 @@ def export_device_excel(device_type: str):
         # Load Template
         # Updated to use the new .xlsx template
         template_path = os.path.join(
-            settings.DATA_DIR, "templates", "specsheet_template.xlsx"
+            str(settings.DATA_DIR), "templates", "specsheet_template.xlsx"
         )
         if not os.path.exists(template_path):
             raise HTTPException(status_code=500, detail="Template file not found")
@@ -415,6 +573,68 @@ def export_device_excel(device_type: str):
                 parts.append(char.get("cond"))
             return ", ".join(parts)
 
+        def format_decimal_value(value, digits=2):
+            if value in (None, ""):
+                return ""
+            try:
+                number = Decimal(str(value))
+            except (InvalidOperation, ValueError, TypeError):
+                return str(value)
+            fmt = f"{{0:.{digits}f}}"
+            return fmt.format(number)
+
+        def format_integer_value(value, use_grouping=False):
+            if value in (None, ""):
+                return ""
+            try:
+                number = Decimal(str(value))
+            except (InvalidOperation, ValueError, TypeError):
+                return str(value)
+            int_value = int(number.to_integral_value(rounding=ROUND_HALF_UP))
+            if use_grouping:
+                return f"{int_value:,}"
+            return str(int_value)
+
+        def format_limit_value(value, item):
+            if value in (None, ""):
+                return ""
+            if item in {"IGSS", "VGSS"}:
+                return f"+/-{value}"
+            return value
+
+        def format_esd_display(raw_value):
+            if raw_value in (None, ""):
+                return ""
+            text = str(raw_value).strip()
+            if not text:
+                return ""
+
+            parts = re.split(r"\s*[:：]\s*", text, maxsplit=1)
+            level_text = parts[0].strip()
+            descriptor = parts[1].strip().lower() if len(parts) > 1 else ""
+
+            level_number = None
+            try:
+                if level_text:
+                    level_number = int(
+                        Decimal(level_text).to_integral_value(rounding=ROUND_HALF_UP)
+                    )
+            except (InvalidOperation, ValueError, TypeError):
+                level_number = None
+
+            descriptor_contains_protected = "protect" in descriptor
+            descriptor_contains_non = "non" in descriptor
+
+            if descriptor_contains_protected and descriptor_contains_non:
+                return ""
+
+            if descriptor_contains_protected:
+                if not level_number or level_number <= 1:
+                    return "*ESD protected"
+                return f"*ESD Protected : {level_number}V"
+
+            return text
+
         # Fill Data based on new template structure
 
         # Header Info
@@ -425,9 +645,9 @@ def export_device_excel(device_type: str):
         ws["D7"] = get_val(device_data, "sheet_name")
 
         # Chip Specs
-        ws["L8"] = (
-            f"{get_val(device_data, 'chip_x_mm')} * {get_val(device_data, 'chip_y_mm')} mm"
-        )
+        chip_x = format_decimal_value(get_val(device_data, "chip_x_mm"), digits=2)
+        chip_y = format_decimal_value(get_val(device_data, "chip_y_mm"), digits=2)
+        ws["L8"] = f"{chip_x} * {chip_y} mm" if chip_x or chip_y else ""
         ws["L10"] = (
             f"{get_val(device_data, 'pad_x_gate_um')} * {get_val(device_data, 'pad_y_gate_um')} um"
         )
@@ -435,7 +655,10 @@ def export_device_excel(device_type: str):
             f"{get_val(device_data, 'pad_x_source_um')} * {get_val(device_data, 'pad_y_source_um')} um"
         )
         ws["L12"] = f"{get_val(device_data, 'dicing_line_um')} um"
-        ws["L16"] = f"{get_val(device_data, 'pdpw')}pcs"
+        pdpw_value = format_integer_value(
+            get_val(device_data, "pdpw"), use_grouping=True
+        )
+        ws["L16"] = f"{pdpw_value} pcs" if pdpw_value else ""
 
         # Chip Appearance Image (C9)
         from openpyxl.drawing.image import Image
@@ -445,7 +668,7 @@ def export_device_excel(device_type: str):
 
         if appearance_file:
             potential_path = os.path.join(
-                settings.DATA_DIR, "chip_appearances", appearance_file
+                str(settings.DATA_DIR), "chip_appearances", appearance_file
             )
             if os.path.exists(potential_path):
                 image_path = potential_path
@@ -453,7 +676,7 @@ def export_device_excel(device_type: str):
         if not image_path:
             # Use placeholder
             image_path = os.path.join(
-                settings.DATA_DIR, "chip_appearances", "no_image.png"
+                str(settings.DATA_DIR), "chip_appearances", "no_image.png"
             )
 
         if os.path.exists(image_path):
@@ -517,18 +740,23 @@ def export_device_excel(device_type: str):
             row = start_row + i
             if i < num_items:
                 char = elec_data[i]
+                item_name = char.get("item")
                 ws.cell(row=row, column=3, value=i + 1).alignment = center_align
+                ws.cell(row=row, column=4, value=item_name).alignment = left_align
                 ws.cell(
-                    row=row, column=4, value=char.get("item")
-                ).alignment = left_align
-                ws.cell(
-                    row=row, column=6, value=char.get("min")
+                    row=row,
+                    column=6,
+                    value=format_limit_value(char.get("min"), item_name),
                 ).alignment = center_align
                 ws.cell(
-                    row=row, column=7, value=char.get("typ")
+                    row=row,
+                    column=7,
+                    value=format_limit_value(char.get("typ"), item_name),
                 ).alignment = center_align
                 ws.cell(
-                    row=row, column=8, value=char.get("max")
+                    row=row,
+                    column=8,
+                    value=format_limit_value(char.get("max"), item_name),
                 ).alignment = center_align
                 ws.cell(
                     row=row, column=9, value=char.get("unit")
@@ -548,32 +776,25 @@ def export_device_excel(device_type: str):
 
         # ESD row should shift only by probe insertions
         esd_row = esd_base_row + extra_probe_rows
-        ws.cell(row=esd_row, column=4, value=get_val(device_data, "esd_display"))
+        ws.cell(
+            row=esd_row,
+            column=4,
+            value=format_esd_display(get_val(device_data, "esd_display")),
+        )
 
         # Related Devices (Starts at Row 49)
         # Columns: Type(F), Top Metal(I), Wafer Thickness(K), Back Metal(M)
         related_start_row = related_base_row + extra_probe_rows
-        base_related_rows = 5
+        base_related_rows = 12
         num_related = len(related_devices)
-        extra_related_rows = max(0, num_related - base_related_rows)
-        if extra_related_rows:
-            ws.insert_rows(related_start_row + base_related_rows, extra_related_rows)
-
-        total_related_rows = max(base_related_rows, num_related)
-        for i in range(total_related_rows):
+        for i in range(base_related_rows):
             row = related_start_row + i
             if i < num_related:
                 dev = related_devices[i]
-                ws.cell(row=row, column=6, value=dev.get("type")).alignment = left_align
-                ws.cell(
-                    row=row, column=9, value=dev.get("top_metal_display")
-                ).alignment = left_align
-                ws.cell(
-                    row=row, column=11, value=dev.get("wafer_thickness_display")
-                ).alignment = left_align
-                ws.cell(
-                    row=row, column=13, value=dev.get("back_metal_display")
-                ).alignment = left_align
+                ws.cell(row=row, column=6, value=dev.get("type"))
+                ws.cell(row=row, column=9, value=dev.get("top_metal_display"))
+                ws.cell(row=row, column=11, value=dev.get("wafer_thickness_display"))
+                ws.cell(row=row, column=13, value=dev.get("back_metal_display"))
             else:
                 for col in [6, 9, 11, 13]:
                     ws.cell(row=row, column=col, value="")
@@ -582,8 +803,8 @@ def export_device_excel(device_type: str):
         g48_row = sheet_name_base_row + extra_probe_rows
         ws.cell(row=g48_row, column=7, value=get_val(device_data, "sheet_name"))
 
-        # Update Date (Base M61) shifts with both probe & related insertions
-        update_date_row = update_date_base_row + extra_probe_rows + extra_related_rows
+        # Update Date (Base M61) shifts only with probe insertions
+        update_date_row = update_date_base_row + extra_probe_rows
         ws.cell(
             row=update_date_row,
             column=13,
