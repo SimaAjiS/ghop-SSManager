@@ -2,8 +2,8 @@ from fastapi import APIRouter, HTTPException
 from typing import Optional
 from sqlalchemy import select, or_, asc, desc, func, cast, String, MetaData, Table
 import json
-from ..database import get_db_engine
-from ..utils import apply_filters
+from ....core.database import get_db_engine
+from ....core.utils import apply_filters
 
 router = APIRouter()
 

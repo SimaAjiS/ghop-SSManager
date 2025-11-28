@@ -1,5 +1,5 @@
 #!/bin/bash
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 # Function to cleanup background processes on exit
 cleanup() {
@@ -11,7 +11,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "Starting Backend..."
-uv run uvicorn backend.main:app --reload --port 8000 &
+uv run uvicorn backend.app.main:app --reload --port 8000 &
 BACKEND_PID=$!
 
 # Wait a moment for backend to start
