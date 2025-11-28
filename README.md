@@ -32,8 +32,8 @@ SSManager は、Excel ファイルで管理されている各種マスタデー�
 3. `uv sync` 直後にプロジェクトルートへ `.env` を作成し、マスターデータの参照先を定義します。
 
    ```
-   NETWORK_MASTER_DIR=\\manuf-clusterfs\...\SSManager
-   MASTER_EXCEL_FILE=backend/storage/master_tables.xlsx  # ローカル利用時のみ
+   NETWORK_MASTER_DIR=\\manuf-clusterfs\...\SSManager  # 共有用のため不要
+   MASTER_EXCEL_FILE=backend/storage/master_tables_dummy.xlsx  # ローカル利用時のみ
    ```
 
    - ネットワーク共有が利用できる場合は `NETWORK_MASTER_DIR` を優先し、ローカルのみで動かす場合は `MASTER_EXCEL_FILE` で Excel ファイルを直指定します。
