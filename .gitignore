@@ -42,3 +42,17 @@ backend/data/templates/*
 # Ignore specific Excel files
 backend/data/master_tables_template.xlsx
 !backend/data/master_tables_dummy.xlsx
+
+# Video files
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.flv
+*.wmv
+*.m4v
+
+# Demo / Presentation
+demo/SSManager_demo.mp4
+!demo/slides/images/.gitkeep
